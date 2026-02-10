@@ -443,3 +443,22 @@ reqwest = { version = "0.12", features = ["json", "cookies", "multipart"] }
 - [ ] 测试不依赖网络
 - [ ] `cargo clippy` 无警告
 - [ ] `cargo test` 所有测试通过
+
+---
+
+## Review Feedback
+
+### Review Round 1 (2026-02-11)
+
+**Verdict: PASSED**
+
+| # | Checklist Item | Result | Feedback |
+|---|----------------|--------|----------|
+| RC-1 | AC clarity | PASS | 7 ACs all have Given/When/Then structure, each independently testable with specific verifiable conditions |
+| RC-2 | Task sequence | PASS | Dependency graph is acyclic: Task 1/2 parallel -> Task 3 -> Task 4/5 parallel -> Task 6 -> Task 7 |
+| RC-3 | Technical feasibility | PASS | Verified against existing code: `api/mod.rs` has placeholder structs (lines 13-27) and TODO comment (line 62); `error.rs` has `From<reqwest::Error>` (line 45-48) and `Result<T>` alias (line 58); `Cargo.toml` reqwest has `json`+`cookies` features (line 22) |
+| RC-4 | Requirement consistency | PASS | Minor wording difference between AC-3 stub message and Task 5.1 stub message ("-- Story 3.3" vs "-- see Story 3.3") is non-contradictory |
+| RC-5 | Scope sizing | PASS | 1 new file (~150 lines), 2 modified files, 1 dependency addition, 7 unit tests -- appropriate for single dev cycle |
+| RC-6 | Dependency documentation | PASS | Story 1-3 prerequisite marked done; downstream Stories 3.2/3.3/3.4 relationships documented in Technical Notes table |
+| RC-7 | File scope declaration | PASS | New files (1), modified files (2), forbidden files (6) all declared with rationale |
+| RC-8 | API/method existence | PASS | `reqwest::Client::builder()`, `reqwest::cookie::Jar`, `regex::Regex::new()`, `AppError` variants, `From<reqwest::Error>` -- all verified against existing codebase and standard crate APIs |
