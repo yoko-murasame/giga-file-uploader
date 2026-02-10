@@ -42,15 +42,22 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
         const file = files[i];
         // Tauri's file input provides path via webkitRelativePath or the
         // File object. We pass the file paths to resolve_dropped_paths.
-        if ((file as unknown as { path?: string }).path) {
-          paths.push((file as unknown as { path?: string }).path as string);
+        const filePath = (file as unknown as { path?: string }).path;
+        if (filePath) {
+          paths.push(filePath);
+        } else {
+          console.warn('File input entry missing native path property:', file.name);
         }
       }
 
       if (paths.length > 0) {
-        const entries = await resolveDroppedPaths(paths);
-        if (entries.length > 0) {
-          addFiles(entries);
+        try {
+          const entries = await resolveDroppedPaths(paths);
+          if (entries.length > 0) {
+            addFiles(entries);
+          }
+        } catch (error) {
+          console.error('Failed to resolve file input paths:', error);
         }
       }
 

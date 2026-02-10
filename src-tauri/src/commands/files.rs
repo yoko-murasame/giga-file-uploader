@@ -68,7 +68,10 @@ fn collect_dir_contents(dir: &Path, entries: &mut Vec<FileEntry>) -> Result<(), 
 /// - Returns an error if any path does not exist.
 #[tauri::command]
 pub async fn resolve_dropped_paths(paths: Vec<String>) -> Result<Vec<FileEntry>, String> {
-    resolve_paths_inner(paths).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || resolve_paths_inner(paths))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 fn resolve_paths_inner(paths: Vec<String>) -> crate::error::Result<Vec<FileEntry>> {

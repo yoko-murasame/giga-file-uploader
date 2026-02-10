@@ -32,9 +32,13 @@ export function useDragDrop() {
   const handleDrop = useCallback(
     async (paths: string[]) => {
       if (paths.length === 0) return;
-      const entries = await resolveDroppedPaths(paths);
-      if (entries.length > 0) {
-        addFiles(entries);
+      try {
+        const entries = await resolveDroppedPaths(paths);
+        if (entries.length > 0) {
+          addFiles(entries);
+        }
+      } catch (error) {
+        console.error('Failed to resolve dropped paths:', error);
       }
     },
     [addFiles],
