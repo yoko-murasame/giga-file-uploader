@@ -42,7 +42,7 @@ development_status:
   epic-1: in-progress
   1-1-project-init-and-dev-environment: done
   1-2-frontend-directory-structure-and-base-ui: done
-  1-3-rust-backend-module-skeleton-and-error-handling: story-doc-review
+  1-3-rust-backend-module-skeleton-and-error-handling: ready-for-dev
   epic-1-retrospective: optional
 
   # Epic 2: 文件输入与上传队列管理
