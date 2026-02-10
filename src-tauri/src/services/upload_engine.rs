@@ -220,12 +220,20 @@ async fn upload_shard(
         handles.push((chunk_index, handle));
     }
 
-    // Collect results
+    // Collect results — on any failure, set cancel_flag so spin-waiting tasks exit
     let mut last_url: Option<String> = None;
     for (idx, handle) in handles {
-        let resp = handle
-            .await
-            .map_err(|e| AppError::Internal(format!("Task join error: {}", e)))??;
+        let resp = match handle.await {
+            Ok(Ok(resp)) => resp,
+            Ok(Err(e)) => {
+                cancel_flag.store(true, Ordering::Relaxed);
+                return Err(e);
+            }
+            Err(e) => {
+                cancel_flag.store(true, Ordering::Relaxed);
+                return Err(AppError::Internal(format!("Task join error: {}", e)));
+            }
+        };
         if idx == total_chunks - 1 {
             last_url = resp.download_url;
         }
