@@ -529,3 +529,36 @@ Dev Runner 被允许修改的文件列表：
 - [ ] 所有测试不依赖文件系统或网络
 - [ ] `cargo clippy` 无警告
 - [ ] `cargo test` 所有测试通过
+
+---
+
+## Review History
+
+### Review Round 1 — 2026-02-11
+
+**Reviewer:** Story Reviewer Agent (BMM PM persona)
+**Verdict:** PASSED
+
+| # | Checklist Item | Result | Feedback |
+|---|----------------|--------|----------|
+| RC-1 | AC clarity | PASS | 5 个 AC 均具备明确的 Given/When/Then 结构，字段名、类型、字节常量值全部精确指定，可直接编写测试断言 |
+| RC-2 | Task sequence | PASS | Task 1→2→3→4→5 的 DAG 无环依赖，Task 3/4 可部分并行，依赖图与文档一致 |
+| RC-3 | Technical feasibility | PASS | 已验证 models/mod.rs:8 和 services/mod.rs:9 的 TODO 占位符存在；api/mod.rs ChunkUploadParams 字段与映射表完全匹配；serde derive 已在 Cargo.toml 中配置；纯计算逻辑无技术风险 |
+| RC-4 | Requirement consistency | PASS | AC-2 (<=1GB → 1 shard) 与 AC-3 (>1GB → 多 shard) 边界清晰无矛盾；AC-5 测试用例覆盖边界值确认；Epic 中的 `split()` 函数名在 Story 中细化为 `plan_chunks()` 属正常 Story 级别细化 |
+| RC-5 | Scope sizing | PASS | 2 个新文件 + 2 个单行修改，纯数学计算逻辑约 130 行实现 + 150 行测试，适合单开发周期 |
+| RC-6 | Dependency documentation | PASS | 前置依赖 Story 1-3、3-1 明确标注且已完成；下游 Story 3.3/3.4/3.5/3.6 的消费关系在"与后续 Story 的关系"表中完整记录 |
+| RC-7 | File scope declaration | PASS | 新增/修改/禁止修改文件列表完整且合理，禁止修改的文件附有理由 |
+| RC-8 | API/method existence | PASS | 所有技术引用已通过代码检查验证：models/mod.rs TODO 占位符(line 8)、services/mod.rs TODO 占位符(line 9)、api::ChunkUploadParams 8 个字段(lines 16-25)、models/file.rs::FileEntry(lines 9-13)、error::AppError 类型(line 12) |
+
+**API Verification Details:**
+- `ChunkUploadParams.data: Vec<u8>` — confirmed at api/mod.rs:17
+- `ChunkUploadParams.chunk_index: u32` — confirmed at api/mod.rs:20
+- `ChunkUploadParams.total_chunks: u32` — confirmed at api/mod.rs:21
+- `ChunkUploadParams.upload_id: String` — confirmed at api/mod.rs:19
+- `ChunkUploadParams.file_name: String` — confirmed at api/mod.rs:18
+- `ChunkUploadParams.lifetime: u32` — confirmed at api/mod.rs:22
+- `ChunkUploadParams.server_url: String` — confirmed at api/mod.rs:23
+- `ChunkUploadParams.cookie_jar: Arc<reqwest::cookie::Jar>` — confirmed at api/mod.rs:24
+- `#[serde(rename_all = "camelCase")]` on FileEntry — confirmed at models/file.rs:8
+- `// TODO: Story 3.2 - pub mod upload;` — confirmed at models/mod.rs:8
+- `// TODO: Story 3.2 - pub mod chunk_manager;` — confirmed at services/mod.rs:9
