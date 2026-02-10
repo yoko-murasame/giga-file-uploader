@@ -8,4 +8,43 @@ created: "2026-02-10"
 max_entries: 200
 cache_ttl_days: 30
 
-entries: []
+entries:
+  - id: "tauri-v2-drag-drop-events"
+    framework: "tauri"
+    framework_version: "2.x"
+    topic: "file drag and drop event handling"
+    tags: ["drag-drop", "onDragDropEvent", "file-drop", "webview", "DragDropEvent"]
+    path: "frameworks/tauri-v2/drag-drop-events.md"
+    created: "2026-02-11"
+    last_accessed: "2026-02-11"
+    status: "fresh"
+
+  - id: "tauri-v2-plugin-dialog-file-picker"
+    framework: "tauri-plugin-dialog"
+    framework_version: "2.x"
+    topic: "native file picker dialog"
+    tags: ["file-dialog", "open", "file-picker", "plugin-dialog", "native-dialog"]
+    path: "frameworks/tauri-v2/plugin-dialog-file-picker.md"
+    created: "2026-02-11"
+    last_accessed: "2026-02-11"
+    status: "fresh"
+
+  - id: "react-html5-drag-drop-file-upload"
+    framework: "react"
+    framework_version: "18.x"
+    topic: "HTML5 drag and drop for file upload UI"
+    tags: ["drag-drop", "dragover", "dragenter", "dragleave", "drop", "file-upload", "html5"]
+    path: "frameworks/react/html5-drag-drop-file-upload.md"
+    created: "2026-02-11"
+    last_accessed: "2026-02-11"
+    status: "fresh"
+
+  - id: "zustand-file-queue-management"
+    framework: "zustand"
+    framework_version: "5.x"
+    topic: "file upload queue management with immer"
+    tags: ["zustand", "immer", "store", "file-queue", "record", "add-remove-update"]
+    path: "frameworks/zustand/file-queue-management.md"
+    created: "2026-02-11"
+    last_accessed: "2026-02-11"
+    status: "fresh"

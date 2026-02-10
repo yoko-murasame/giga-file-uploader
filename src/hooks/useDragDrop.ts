@@ -46,6 +46,7 @@ export function useDragDrop() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
 
     getCurrentWebview()
       .onDragDropEvent((event) => {
@@ -60,10 +61,15 @@ export function useDragDrop() {
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [handleDrop]);
