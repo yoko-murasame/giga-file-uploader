@@ -145,6 +145,72 @@ describe('FileDropZone', () => {
       );
       consoleSpy.mockRestore();
     });
+
+    it('should handle resolveDroppedPaths rejection after successful file selection', async () => {
+      const user = userEvent.setup();
+      mockOpenFilePicker.mockResolvedValue(['/tmp/test.txt']);
+      mockResolveDroppedPaths.mockRejectedValue(
+        new Error('IPC resolve error'),
+      );
+
+      const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
+      expect(mockResolveDroppedPaths).toHaveBeenCalledWith(['/tmp/test.txt']);
+      expect(addFilesSpy).not.toHaveBeenCalled();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to open file picker:',
+        expect.any(Error),
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('should not call addFiles when resolveDroppedPaths returns empty array', async () => {
+      const user = userEvent.setup();
+      mockOpenFilePicker.mockResolvedValue(['/tmp/gone.txt']);
+      mockResolveDroppedPaths.mockResolvedValue([]);
+
+      const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
+      expect(mockResolveDroppedPaths).toHaveBeenCalledWith(['/tmp/gone.txt']);
+      expect(addFilesSpy).not.toHaveBeenCalled();
+    });
+
+    it('should prevent concurrent file picker invocations on rapid clicks', async () => {
+      const user = userEvent.setup();
+      let resolveFirst: ((value: string[] | null) => void) | undefined;
+      mockOpenFilePicker.mockImplementationOnce(
+        () =>
+          new Promise<string[] | null>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+
+      // First click - starts async operation
+      await user.click(dropZone);
+      // Second click - should be blocked by guard
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).toHaveBeenCalledTimes(1);
+
+      // Resolve first call to clean up
+      resolveFirst!(null);
+    });
   });
 
   describe('collapsed state', () => {

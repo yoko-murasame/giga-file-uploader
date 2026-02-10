@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import { Upload } from 'lucide-react';
 
@@ -13,8 +13,11 @@ interface FileDropZoneProps {
 function FileDropZone({ collapsed = false }: FileDropZoneProps) {
   const { isDragOver, prefersReducedMotion } = useDragDrop();
   const addFiles = useUploadStore((s) => s.addFiles);
+  const isPickerOpenRef = useRef(false);
 
   const handleClick = useCallback(async () => {
+    if (isPickerOpenRef.current) return;
+    isPickerOpenRef.current = true;
     try {
       const paths = await openFilePicker();
       if (paths === null) return;
@@ -25,6 +28,8 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
       }
     } catch (error) {
       console.error('Failed to open file picker:', error);
+    } finally {
+      isPickerOpenRef.current = false;
     }
   }, [addFiles]);
 
