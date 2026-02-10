@@ -54,7 +54,7 @@ development_status:
 
   # Epic 3: 核心上传引擎与链接产出
   epic-3: in-progress
-  3-1-gigafile-api-abstraction-and-server-discovery: ready-for-dev
+  3-1-gigafile-api-abstraction-and-server-discovery: review
   3-2-file-chunk-manager: backlog
   3-3-upload-engine-core-serial-first-chunk-and-concurrent: backlog
   3-4-retry-engine-and-error-handling: backlog
