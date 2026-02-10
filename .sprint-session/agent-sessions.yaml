@@ -1,0 +1,31 @@
+# BSO Agent Session Registry
+# Session: sprint-2026-02-11-001
+# Created: 2026-02-11
+sessions:
+  "1-1":
+    story_creator:
+      agent_id: "abeeb70"
+      timestamp: "2026-02-11T03:08:52Z"
+    dev_runner:
+      agent_id: "a1c2005"
+      timestamp: "2026-02-11T03:17:00Z"
+    review_runner:
+      agent_id: "a22d9f9"
+      timestamp: "2026-02-11T03:25:00Z"
+  "1-2":
+    story_creator:
+      agent_id: "a39faaf"
+      timestamp: "2026-02-11T03:35:00Z"
+    dev_runner:
+      agent_id: "a186a55"
+      timestamp: "2026-02-11T03:45:00Z"
+    review_runner:
+      agent_id: "ae0c2b2"
+      timestamp: "2026-02-11T03:55:00Z"
+  "1-3":
+    story_creator:
+      agent_id: "a87da12"
+      timestamp: "2026-02-11T04:05:00Z"
+    dev_runner:
+      agent_id: "aab1b2a"
+      timestamp: "2026-02-11T04:15:00Z"
