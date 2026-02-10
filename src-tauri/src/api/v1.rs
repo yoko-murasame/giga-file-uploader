@@ -21,6 +21,7 @@ impl GigafileApiV1 {
     pub fn new() -> crate::error::Result<Self> {
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| AppError::Internal(format!("Failed to build HTTP client: {}", e)))?;
         Ok(Self { client })
@@ -45,6 +46,7 @@ impl GigafileApi for GigafileApiV1 {
             .get(GIGAFILE_HOME_URL)
             .send()
             .await?
+            .error_for_status()?
             .text()
             .await?;
         Self::extract_server_from_html(&html)
