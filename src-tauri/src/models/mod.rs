@@ -5,7 +5,7 @@
 
 pub mod file;
 
-// TODO: Story 3.2 - pub mod upload; (UploadTask, Shard, Chunk, UploadConfig)
+pub mod upload;
 // TODO: Story 4.1 - pub mod history; (HistoryRecord)
 
 #[cfg(test)]

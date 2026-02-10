@@ -6,7 +6,7 @@
 //! and persistence to the `storage` layer.
 
 // TODO: Story 3.3 - pub mod upload_engine;
-// TODO: Story 3.2 - pub mod chunk_manager;
+pub mod chunk_manager;
 // TODO: Story 3.4 - pub mod retry_engine;
 // TODO: Story 3.5 - pub mod progress;
 
