@@ -7,6 +7,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export { invoke } from '@tauri-apps/api/core';
 export { listen } from '@tauri-apps/api/event';
@@ -20,3 +21,9 @@ export async function resolveDroppedPaths(
   return invoke<FileEntry[]>('resolve_dropped_paths', { paths });
 }
 
+/** Open the system native file picker dialog. Returns selected file paths, or null if cancelled. */
+export async function openFilePicker(): Promise<string[] | null> {
+  const selected = await open({ multiple: true });
+  if (selected === null) return null;
+  return Array.isArray(selected) ? selected : [selected];
+}

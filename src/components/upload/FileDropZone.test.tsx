@@ -4,9 +4,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 import { useUploadStore } from '@/stores/uploadStore';
 
-// Mock Tauri IPC (specific to this test)
+import type { FileEntry } from '@/types/upload';
+
+const mockOpenFilePicker = vi.fn();
+const mockResolveDroppedPaths = vi.fn();
+
 vi.mock('@/lib/tauri', () => ({
-  resolveDroppedPaths: vi.fn().mockResolvedValue([]),
+  openFilePicker: (...args: unknown[]) => mockOpenFilePicker(...args),
+  resolveDroppedPaths: (...args: unknown[]) => mockResolveDroppedPaths(...args),
   invoke: vi.fn(),
   listen: vi.fn(),
 }));
@@ -15,7 +20,10 @@ import FileDropZone from '@/components/upload/FileDropZone';
 
 describe('FileDropZone', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useUploadStore.setState({ pendingFiles: [] });
+    mockOpenFilePicker.mockResolvedValue(null);
+    mockResolveDroppedPaths.mockResolvedValue([]);
   });
 
   describe('idle state (not collapsed)', () => {
@@ -44,55 +52,98 @@ describe('FileDropZone', () => {
       expect(dropZone).toHaveAttribute('tabindex', '0');
     });
 
-    it('should contain a hidden file input', () => {
+    it('should NOT contain a hidden file input element', () => {
       render(<FileDropZone />);
       const input = document.querySelector('input[type="file"]');
-      expect(input).toBeInTheDocument();
-      expect(input).toHaveAttribute('multiple');
+      expect(input).not.toBeInTheDocument();
     });
 
-    it('should trigger file input on click', async () => {
+    it('should call openFilePicker on click', async () => {
       const user = userEvent.setup();
       render(<FileDropZone />);
-      const input = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const clickSpy = vi.spyOn(input, 'click');
 
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       await user.click(dropZone);
 
-      expect(clickSpy).toHaveBeenCalled();
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
     });
 
-    it('should trigger file input on Enter key', async () => {
+    it('should call resolveDroppedPaths and addFiles when files are selected', async () => {
+      const user = userEvent.setup();
+      const mockEntries: FileEntry[] = [
+        { id: '1', name: 'test.txt', path: '/tmp/test.txt', size: 100 },
+        { id: '2', name: 'image.png', path: '/tmp/image.png', size: 200 },
+      ];
+      mockOpenFilePicker.mockResolvedValue(['/tmp/test.txt', '/tmp/image.png']);
+      mockResolveDroppedPaths.mockResolvedValue(mockEntries);
+
+      const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockResolveDroppedPaths).toHaveBeenCalledWith([
+        '/tmp/test.txt',
+        '/tmp/image.png',
+      ]);
+      expect(addFilesSpy).toHaveBeenCalledWith(mockEntries);
+    });
+
+    it('should not call addFiles when user cancels file picker (returns null)', async () => {
+      const user = userEvent.setup();
+      mockOpenFilePicker.mockResolvedValue(null);
+
+      const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
+      expect(mockResolveDroppedPaths).not.toHaveBeenCalled();
+      expect(addFilesSpy).not.toHaveBeenCalled();
+    });
+
+    it('should call openFilePicker on Enter key', async () => {
       const user = userEvent.setup();
       render(<FileDropZone />);
-      const input = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const clickSpy = vi.spyOn(input, 'click');
 
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       dropZone.focus();
       await user.keyboard('{Enter}');
 
-      expect(clickSpy).toHaveBeenCalled();
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
     });
 
-    it('should trigger file input on Space key', async () => {
+    it('should call openFilePicker on Space key', async () => {
       const user = userEvent.setup();
       render(<FileDropZone />);
-      const input = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const clickSpy = vi.spyOn(input, 'click');
 
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       dropZone.focus();
       await user.keyboard(' ');
 
-      expect(clickSpy).toHaveBeenCalled();
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
+    });
+
+    it('should not crash when openFilePicker throws an error', async () => {
+      const user = userEvent.setup();
+      mockOpenFilePicker.mockRejectedValue(new Error('Dialog plugin error'));
+
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to open file picker:',
+        expect.any(Error),
+      );
+      consoleSpy.mockRestore();
     });
   });
 
@@ -116,24 +167,38 @@ describe('FileDropZone', () => {
       expect(dropZone).toHaveAttribute('aria-label', '添加文件');
     });
 
-    it('should have a hidden file input', () => {
+    it('should NOT contain a hidden file input element', () => {
       render(<FileDropZone collapsed />);
       const input = document.querySelector('input[type="file"]');
-      expect(input).toBeInTheDocument();
+      expect(input).not.toBeInTheDocument();
     });
 
-    it('should trigger file input on click in collapsed mode', async () => {
+    it('should call openFilePicker on click in collapsed mode', async () => {
       const user = userEvent.setup();
       render(<FileDropZone collapsed />);
-      const input = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      const clickSpy = vi.spyOn(input, 'click');
 
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       await user.click(dropZone);
 
-      expect(clickSpy).toHaveBeenCalled();
+      expect(mockOpenFilePicker).toHaveBeenCalledOnce();
+    });
+
+    it('should call resolveDroppedPaths and addFiles in collapsed mode', async () => {
+      const user = userEvent.setup();
+      const mockEntries: FileEntry[] = [
+        { id: '3', name: 'doc.pdf', path: '/tmp/doc.pdf', size: 500 },
+      ];
+      mockOpenFilePicker.mockResolvedValue(['/tmp/doc.pdf']);
+      mockResolveDroppedPaths.mockResolvedValue(mockEntries);
+
+      const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
+
+      render(<FileDropZone collapsed />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockResolveDroppedPaths).toHaveBeenCalledWith(['/tmp/doc.pdf']);
+      expect(addFilesSpy).toHaveBeenCalledWith(mockEntries);
     });
   });
 });

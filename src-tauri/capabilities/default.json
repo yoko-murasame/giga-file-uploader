@@ -13,6 +13,7 @@
     "store:allow-delete",
     "store:allow-keys",
     "store:allow-clear",
-    "store:allow-length"
+    "store:allow-length",
+    "dialog:default"
   ]
 }
