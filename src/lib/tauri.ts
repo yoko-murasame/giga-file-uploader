@@ -6,11 +6,17 @@
  * 事件监听通过自定义 hooks 使用 listen 函数。
  */
 
+import { invoke } from '@tauri-apps/api/core';
+
 export { invoke } from '@tauri-apps/api/core';
 export { listen } from '@tauri-apps/api/event';
 
-// TODO: 后续 Story 添加具体 command 封装函数
-// 例如:
-// export async function startUpload(files: FileInput[], config: UploadConfig) { ... }
-// export async function cancelUpload(taskId: string) { ... }
-// export async function getHistory() { ... }
+import type { FileEntry } from '@/types/upload';
+
+/** Resolve dropped file/directory paths into a flat list of file entries. */
+export async function resolveDroppedPaths(
+  paths: string[],
+): Promise<FileEntry[]> {
+  return invoke<FileEntry[]>('resolve_dropped_paths', { paths });
+}
+

@@ -14,8 +14,8 @@ describe('App', () => {
     expect(screen.getByRole('tab', { name: '历史记录' })).toBeInTheDocument();
   });
 
-  it('renders upload page placeholder by default', () => {
+  it('renders upload page content by default', () => {
     render(<App />);
-    expect(screen.getByText('上传页面 - 待实现')).toBeInTheDocument();
+    expect(screen.getByText('将文件拖到这里，或点击选择文件')).toBeInTheDocument();
   });
 });

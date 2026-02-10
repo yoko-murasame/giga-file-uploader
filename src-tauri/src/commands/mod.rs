@@ -4,6 +4,8 @@
 //! perform parameter parsing and forward to the `services` layer for business logic.
 //! Commands should not contain business logic directly.
 
+pub mod files;
+
 // TODO: Story 3.3 - pub mod upload; (start_upload, cancel_upload)
 // TODO: Story 4.1 - pub mod history; (get_history, delete_history)
 // TODO: Story 5.1 - pub mod settings; (get_settings, save_settings)

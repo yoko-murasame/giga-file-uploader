@@ -3,6 +3,8 @@
 //! This module contains shared data structure definitions used across the application,
 //! including upload task models, history records, and configuration types.
 
+pub mod file;
+
 // TODO: Story 3.2 - pub mod upload; (UploadTask, Shard, Chunk, UploadConfig)
 // TODO: Story 4.1 - pub mod history; (HistoryRecord)
 

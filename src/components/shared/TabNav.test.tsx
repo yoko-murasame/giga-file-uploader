@@ -21,9 +21,9 @@ describe('TabNav', () => {
     expect(uploadTab).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('renders upload page placeholder content by default', () => {
+  it('renders upload page content by default', () => {
     render(<TabNav />);
-    expect(screen.getByText('上传页面 - 待实现')).toBeInTheDocument();
+    expect(screen.getByText('将文件拖到这里，或点击选择文件')).toBeInTheDocument();
   });
 
   it('switches to history tab on click and updates store', async () => {
@@ -48,7 +48,7 @@ describe('TabNav', () => {
 
     expect(useAppStore.getState().currentTab).toBe('upload');
     expect(uploadTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('上传页面 - 待实现')).toBeInTheDocument();
+    expect(screen.getByText('将文件拖到这里，或点击选择文件')).toBeInTheDocument();
   });
 
   it('renders tablist role for accessibility', () => {
