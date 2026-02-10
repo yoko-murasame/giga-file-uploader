@@ -46,7 +46,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: 文件输入与上传队列管理
-  epic-2: backlog
+  epic-2: in-progress
   2-1-file-drag-drop-input-and-drop-zone: backlog
   2-2-file-picker-input: backlog
   2-3-upload-file-list-preview-and-management: backlog
