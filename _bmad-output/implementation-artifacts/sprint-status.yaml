@@ -49,7 +49,7 @@ development_status:
   epic-2: in-progress
   2-1-file-drag-drop-input-and-drop-zone: done
   2-2-file-picker-input: done
-  2-3-upload-file-list-preview-and-management: ready-for-dev
+  2-3-upload-file-list-preview-and-management: review
   epic-2-retrospective: optional
 
   # Epic 3: 核心上传引擎与链接产出
