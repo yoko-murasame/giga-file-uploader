@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "Giga File Uploader",
-        "width": 900,
-        "height": 670,
+        "title": "GigaFile",
+        "width": 720,
+        "height": 560,
+        "minWidth": 600,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false
       }
