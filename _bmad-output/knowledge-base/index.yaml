@@ -1,0 +1,11 @@
+# BSO Knowledge Base Index
+# 由 BSO Module Installer 自动生成
+# 格式说明：参见 Knowledge Management System 文档
+
+schema_version: 1
+bso_module_version: "1.0.0"
+created: "2026-02-10"
+max_entries: 200
+cache_ttl_days: 30
+
+entries: []

@@ -1,0 +1,115 @@
+# BSO Sprint Orchestrator — Configuration
+# User-customizable settings for autonomous sprint execution
+# Version: 1.0.0
+
+# Role mapping — which BMAD agent persona for each phase
+role_mapping:
+  story_creator_persona: "bmad:bmm:agents:sm"
+  story_reviewer_persona: "bmad:bmm:agents:pm"
+  dev_runner_persona: "bmad:bmm:agents:dev"
+  review_runner_persona: "bmad:bmm:agents:architect"  # Different from dev_runner for review independence (Principle 30)
+  e2e_inspector_persona: "bmad:bmm:agents:dev"
+  knowledge_researcher_persona: "bmad:bmm:agents:architect"
+
+# Workflow mapping — which BMAD workflow for each phase
+workflow_mapping:
+  create_story: "bmad:bmm:workflows:create-story"
+  dev_story: "bmad:bmm:workflows:dev-story"
+  code_review: "bmad:bmm:workflows:code-review"
+
+# Default parameters (overridable via CLI)
+defaults:
+  parallel: 1
+  max_review_rounds: 10
+  max_story_review_rounds: 3
+  review_strictness: "normal"    # strict / normal / lenient（用户面语义：strict=全修, lenient=只修HIGH）
+  auto_clear_git_track: true
+  story_review_enabled: true
+  story_review_fallback: "ask_user"  # ask_user | force_pass | skip_story
+  first_story_checkpoint: "pause"    # pause | report | skip
+
+  # Agent timeout recovery (Principle 15)
+  agent_timeout_seconds:
+    story_creation: 900              # 15 min
+    story_review: 900                # 15 min
+    dev_execution: 1800              # 30 min (largest scope, TDD full cycle)
+    code_review: 900                 # 15 min
+    e2e_inspection: 900              # 15 min
+    knowledge_research: 600          # 10 min (per call, includes network latency)
+  agent_timeout_action: "mark_needs_intervention"  # mark_needs_intervention | retry_once | skip
+
+  # Review progressive degradation (Principle 22)
+  review_degradation:
+    round_3: "lower_strictness"
+    round_5: "high_only"
+    round_8: "force_needs_intervention"
+
+  # Token budget awareness (Principle 26)
+  token_budget:
+    enabled: true
+    warning_threshold: 0.7
+    action: "pause_and_report"       # pause_and_report | warn_and_continue | ignore
+
+  # Story dependency detection (Principle 29)
+  dependency_detection:
+    mode: "file_overlap"             # file_overlap | none
+    consecutive_failure_threshold: 3
+
+# Knowledge research
+knowledge_research:
+  enabled: true
+  knowledge_base_path: "{output_folder}/knowledge-base"
+  # 路径解析说明:
+  #   {output_folder} 来自 BMAD config.yaml 的 output_folder 字段（默认: {project-root}/_bmad-output）
+  #   lessons 文件完整路径: {project_root}/_bmad-output/knowledge-base/lessons/_lessons-learned.md
+  #   如果变量解析失败，Orchestrator 应使用硬编码相对路径: _bmad-output/knowledge-base/lessons/_lessons-learned.md
+  cache_ttl_days: 30
+  max_calls_per_story: 3
+  timeout_seconds: 600
+  cache_fuzzy_match: true
+  sources:
+    - context7
+    - deepwiki
+    - web_search
+  fallback_if_mcp_unavailable: web_search
+
+# E2E inspection (optional)
+e2e_inspection:
+  enabled: false
+  mode: "interactive"                # interactive | semi-auto | full-auto
+  environment:
+    base_url: "http://localhost:3100"
+    login:
+      enabled: true
+      url: "/login"
+      default_username: "admin"
+      default_password: ""
+    wait_after_navigation: 2000
+  browser_tool:
+    preferred: "chrome_mcp"
+    fallback: "playwright_mcp"
+  trigger_conditions:
+    - story_tags_include: ["frontend", "ui", "web", "page"]
+
+# Git commit templates
+git_commit_patterns:
+  story_created: "docs: Story {epic}.{story}: {title} 创建开发文档"
+  story_revised: "docs: Story {epic}.{story}: {title} 修订开发文档"
+  dev_complete: "feat: Story {epic}.{story}: {title}"
+  review_complete: "docs: Story {epic}.{story}: code review [round {round}]"
+  fix_complete: "fix: Story {epic}.{story}: [review {round}] {description}"
+
+# Git squash strategy (Principle 28)
+git_squash_strategy: "per_story"     # per_story | per_phase | none
+
+# Status file search paths
+status_file_search_paths:
+  - "{output_folder}/implementation-artifacts/sprint-status.yaml"
+  - "./sprint-status.yaml"
+
+# Research Relay Protocol (Orchestrator-Mediated)
+# Agent 无法直接调度 KR（子进程限制），通过主控中继实现
+research_relay:
+  max_requests_per_dispatch: 5   # 单次 Agent 返回 needs-research 最多携带的研究请求数
+  timeout_seconds: 300           # 单次 KR 调度超时（秒）
+  allow_recursive: true          # 允许 Agent 二次返回 needs-research（累计不超过 max_calls_per_story）

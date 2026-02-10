@@ -1,0 +1,63 @@
+code: bso
+name: "BSO: Sprint Orchestrator — Autonomous Sprint Development Engine"
+header: "Autonomous sprint execution engine with state machine orchestration"
+subheader: "Coordinates 6 specialized agents through a 9-state lifecycle for zero-intervention sprint automation"
+maturity: alpha  # Non-standard field: indicates module development maturity (alpha/beta/stable). Used for informational purposes only, not consumed by installer.
+default_selected: false
+
+# Variables from Core Config inserted:
+## user_name
+## communication_language
+## document_output_language
+## output_folder
+
+# Dependencies
+dependencies:
+  - module: bmm
+    version: ">= 1.0.0"
+    required: true
+  - module: core
+    required: true
+
+# BSO-specific variables
+knowledge_base_path:
+  prompt: "Where should the knowledge base be stored?"
+  default: "{output_folder}/knowledge-base"
+  result: "{project-root}/{value}"
+
+e2e_enabled:
+  prompt: "Enable E2E browser verification? (requires Chrome MCP or Playwright MCP)"
+  default: false
+  result: "{value}"
+
+first_story_checkpoint:
+  prompt:
+    - "First Story checkpoint mode?"
+    - "pause = stop after first Story for quality check (recommended for newcomers)"
+    - "report = generate report and continue"
+    - "skip = full autonomous mode"
+  default: "pause"
+  result: "{value}"
+  single-select:
+    - value: "pause"
+      label: "Pause — Stop after first Story for quality validation"
+    - value: "report"
+      label: "Report — Generate report and continue execution"
+    - value: "skip"
+      label: "Skip — Full autonomous mode (power users)"
+
+git_squash_strategy:
+  prompt:
+    - "Git squash strategy for Story commits?"
+    - "per_story = one clean commit per Story (recommended)"
+    - "per_phase = one commit per phase (create/dev/review)"
+    - "none = keep all intermediate commits"
+  default: "per_story"
+  result: "{value}"
+  single-select:
+    - value: "per_story"
+      label: "Per Story — One clean commit per completed Story"
+    - value: "per_phase"
+      label: "Per Phase — One commit per lifecycle phase"
+    - value: "none"
+      label: "None — Keep all commits (for debugging)"

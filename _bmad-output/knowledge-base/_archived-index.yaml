@@ -1,0 +1,6 @@
+# BSO Knowledge Base — Archived Index
+# LRU 淘汰的条目存储在此文件
+# 条目可手动恢复到 index.yaml
+
+schema_version: 1
+archived_entries: []
