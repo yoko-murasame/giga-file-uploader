@@ -8,23 +8,39 @@
 //! This design satisfies NFR6 (API replaceability): when the gigafile.nu API changes,
 //! only the implementation within this module needs to be updated.
 
+use std::sync::Arc;
+
 use crate::error::AppError;
 
-/// TODO: Story 3.1 - add fields: data, shard_index, chunk_index, server_url, cookie_jar
 #[derive(Debug)]
-pub struct ChunkUploadParams;
+pub struct ChunkUploadParams {
+    pub data: Vec<u8>,
+    pub file_name: String,
+    pub upload_id: String,
+    pub chunk_index: u32,
+    pub total_chunks: u32,
+    pub lifetime: u32,
+    pub server_url: String,
+    pub cookie_jar: Arc<reqwest::cookie::Jar>,
+}
 
-/// TODO: Story 3.1 - add fields: success, cookie, download_url
 #[derive(Debug)]
-pub struct ChunkUploadResponse;
+pub struct ChunkUploadResponse {
+    pub status: i32,
+    pub download_url: Option<String>,
+}
 
-/// TODO: Story 3.1 - add fields: server_url, file_id
 #[derive(Debug)]
-pub struct VerifyUploadParams;
+pub struct VerifyUploadParams {
+    pub download_url: String,
+    pub expected_size: u64,
+}
 
-/// TODO: Story 3.1 - add fields: success, download_url
 #[derive(Debug)]
-pub struct VerifyResult;
+pub struct VerifyResult {
+    pub is_valid: bool,
+    pub remote_size: u64,
+}
 
 /// Abstraction trait for gigafile.nu API interactions.
 ///
@@ -59,7 +75,7 @@ pub trait GigafileApi: Send + Sync {
     ) -> impl std::future::Future<Output = std::result::Result<VerifyResult, AppError>> + Send;
 }
 
-// TODO: Story 3.1 - pub mod v1; (GigafileApiV1 implementation)
+pub mod v1;
 
 #[cfg(test)]
 mod tests {
