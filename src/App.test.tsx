@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import App from './App';
+import App from '@/App';
 import { useAppStore } from '@/stores/appStore';
 
 describe('App', () => {
