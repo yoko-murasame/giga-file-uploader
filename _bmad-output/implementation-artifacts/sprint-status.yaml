@@ -56,7 +56,7 @@ development_status:
   epic-3: in-progress
   3-1-gigafile-api-abstraction-and-server-discovery: done
   3-2-file-chunk-manager: done
-  3-3-upload-engine-core-serial-first-chunk-and-concurrent: review
+  3-3-upload-engine-core-serial-first-chunk-and-concurrent: done
   3-4-retry-engine-and-error-handling: backlog
   3-5-upload-progress-aggregation-and-realtime-display: backlog
   3-6-upload-complete-link-output-and-copy: backlog
