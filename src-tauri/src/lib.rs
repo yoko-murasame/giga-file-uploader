@@ -11,8 +11,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .manage(commands::upload::UploadState::default())
         .invoke_handler(tauri::generate_handler![
-            commands::files::resolve_dropped_paths
+            commands::files::resolve_dropped_paths,
+            commands::upload::start_upload,
+            commands::upload::cancel_upload,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

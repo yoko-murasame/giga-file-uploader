@@ -54,11 +54,56 @@ impl GigafileApi for GigafileApiV1 {
 
     async fn upload_chunk(
         &self,
-        _params: ChunkUploadParams,
+        params: ChunkUploadParams,
     ) -> crate::error::Result<ChunkUploadResponse> {
-        Err(AppError::Internal(
-            "upload_chunk not yet implemented -- see Story 3.3".into(),
-        ))
+        // Create a temporary client with the shard's cookie jar
+        let client = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .cookie_provider(params.cookie_jar.clone())
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .map_err(|e| AppError::Internal(format!("Failed to build upload client: {}", e)))?;
+
+        // Build multipart form
+        let form = reqwest::multipart::Form::new()
+            .text("id", params.upload_id)
+            .text("name", params.file_name)
+            .text("chunk", params.chunk_index.to_string())
+            .text("chunks", params.total_chunks.to_string())
+            .text("lifetime", params.lifetime.to_string())
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(params.data)
+                    .file_name("blob")
+                    .mime_str("application/octet-stream")
+                    .map_err(|e| AppError::Internal(format!("MIME parse error: {}", e)))?,
+            );
+
+        // POST to upload_chunk.php
+        let url = format!("{}/upload_chunk.php", params.server_url);
+        let resp = client
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        // Parse response JSON
+        let body: serde_json::Value = resp.json().await?;
+        let status = body["status"].as_i64().unwrap_or(-1) as i32;
+        let download_url = body["url"].as_str().map(|s| s.to_string());
+
+        if status != 0 {
+            return Err(AppError::Api(format!(
+                "upload_chunk failed: status={}, response={}",
+                status, body
+            )));
+        }
+
+        Ok(ChunkUploadResponse {
+            status,
+            download_url,
+        })
     }
 
     async fn verify_upload(
@@ -160,5 +205,57 @@ mod tests {
         };
         assert_eq!(params.download_url, "https://gigafile.nu/abc123");
         assert_eq!(params.expected_size, 1024 * 1024);
+    }
+
+    #[test]
+    fn test_chunk_upload_response_intermediate_chunk() {
+        // Intermediate chunk response: {"status": 0} — no url field
+        let body: serde_json::Value = serde_json::from_str(r#"{"status": 0}"#).unwrap();
+        let status = body["status"].as_i64().unwrap_or(-1) as i32;
+        let download_url = body["url"].as_str().map(|s| s.to_string());
+
+        assert_eq!(status, 0);
+        assert!(download_url.is_none());
+
+        let resp = ChunkUploadResponse {
+            status,
+            download_url,
+        };
+        assert_eq!(resp.status, 0);
+        assert!(resp.download_url.is_none());
+    }
+
+    #[test]
+    fn test_chunk_upload_response_last_chunk() {
+        // Last chunk response: {"status": 0, "url": "https://..."}
+        let body: serde_json::Value =
+            serde_json::from_str(r#"{"status": 0, "url": "https://46.gigafile.nu/abc123"}"#)
+                .unwrap();
+        let status = body["status"].as_i64().unwrap_or(-1) as i32;
+        let download_url = body["url"].as_str().map(|s| s.to_string());
+
+        assert_eq!(status, 0);
+        assert_eq!(
+            download_url.as_deref(),
+            Some("https://46.gigafile.nu/abc123")
+        );
+
+        let resp = ChunkUploadResponse {
+            status,
+            download_url,
+        };
+        assert_eq!(resp.status, 0);
+        assert_eq!(
+            resp.download_url.as_deref(),
+            Some("https://46.gigafile.nu/abc123")
+        );
+    }
+
+    #[test]
+    fn test_chunk_upload_response_error_status() {
+        // Error response: non-zero status
+        let body: serde_json::Value = serde_json::from_str(r#"{"status": 1}"#).unwrap();
+        let status = body["status"].as_i64().unwrap_or(-1) as i32;
+        assert_ne!(status, 0);
     }
 }
