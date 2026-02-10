@@ -81,4 +81,51 @@ describe('UploadFileItem', () => {
     });
     expect(deleteButton).toBeInTheDocument();
   });
+
+  it('should apply opacity-0 and max-h-0 classes after clicking delete', async () => {
+    const user = userEvent.setup();
+
+    render(<UploadFileItem {...defaultProps} />, { wrapper: Wrapper });
+
+    const listItem = screen.getByRole('listitem');
+    expect(listItem).toHaveClass('opacity-100', 'max-h-12');
+
+    const deleteButton = screen.getByRole('button', { name: /删除/ });
+    await user.click(deleteButton);
+
+    expect(listItem).toHaveClass('opacity-0', 'max-h-0');
+  });
+
+  it('should call onRemove immediately when prefers-reduced-motion is enabled', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(prefers-reduced-motion: reduce)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    const onRemove = vi.fn();
+    const user = userEvent.setup();
+
+    render(<UploadFileItem {...defaultProps} onRemove={onRemove} />, {
+      wrapper: Wrapper,
+    });
+
+    const deleteButton = screen.getByRole('button', { name: /删除/ });
+    await user.click(deleteButton);
+
+    // Should be called immediately, not after a timeout
+    expect(onRemove).toHaveBeenCalledWith('test-id-1');
+
+    // li should NOT have removing classes since we skip animation
+    const listItem = screen.getByRole('listitem');
+    expect(listItem).not.toHaveClass('opacity-0');
+
+    window.matchMedia = originalMatchMedia;
+  });
 });

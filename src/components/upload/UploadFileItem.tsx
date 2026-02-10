@@ -35,7 +35,7 @@ function UploadFileItemInner({
 
   return (
     <li
-      className={`flex h-12 items-center gap-3 rounded-md px-3 transition-[opacity,max-height] duration-200 ${
+      className={`flex h-12 items-center gap-3 overflow-hidden rounded-md px-3 transition-[opacity,max-height] duration-200 ${
         isRemoving ? 'max-h-0 opacity-0' : 'max-h-12 opacity-100'
       }`}
     >
