@@ -1,0 +1,75 @@
+# generated: 2026-02-11
+# project: giga-file-uploader
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-02-11
+project: giga-file-uploader
+tracking_system: file-system
+story_location: "_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 1: 项目基础设施与开发环境搭建
+  epic-1: in-progress
+  1-1-project-init-and-dev-environment: story-doc-review
+  1-2-frontend-directory-structure-and-base-ui: backlog
+  1-3-rust-backend-module-skeleton-and-error-handling: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: 文件输入与上传队列管理
+  epic-2: backlog
+  2-1-file-drag-drop-input-and-drop-zone: backlog
+  2-2-file-picker-input: backlog
+  2-3-upload-file-list-preview-and-management: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: 核心上传引擎与链接产出
+  epic-3: backlog
+  3-1-gigafile-api-abstraction-and-server-discovery: backlog
+  3-2-file-chunk-manager: backlog
+  3-3-upload-engine-core-serial-first-chunk-and-concurrent: backlog
+  3-4-retry-engine-and-error-handling: backlog
+  3-5-upload-progress-aggregation-and-realtime-display: backlog
+  3-6-upload-complete-link-output-and-copy: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: 历史记录与链接管理
+  epic-4: backlog
+  4-1-upload-history-persistent-storage: backlog
+  4-2-history-list-display-and-link-management: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: 上传配置与离线体验
+  epic-5: backlog
+  5-1-file-retention-period-selection: backlog
+  5-2-offline-mode-and-network-status-awareness: backlog
+  epic-5-retrospective: optional
