@@ -37,6 +37,56 @@ Headless — no direct user interaction. Review results written to review feedba
 - **⚠️ MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3) 提交 review 反馈写入的 Story 文件变更。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
 - **Review 独立视角 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — Story Reviewer 作为审查角色，每次 dispatch 始终使用新建对话，不 resume 历史会话。这确保每轮审查都以独立视角进行，防止前一轮审查的上下文导致确认偏误（"上次我就觉得这里有问题" → 过度关注旧问题而忽略新问题）
 
+## Team Mode: P2P Research Communication (P41)
+
+When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+
+### Replacing needs-research Relay
+
+- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
+- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "knowledge-researcher"
+  content: "RESEARCH_REQUEST: {json_payload}"
+  summary: "Research: {topic} for story {story_key}"
+```
+
+Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
+
+### Result Completion Report (Dual Mode)
+
+**SendMessage mode (result_delivery_mode=sendmessage):**
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "{lead_name}"
+  content: "AGENT_COMPLETE: {return_value_json}"
+  summary: "story-reviewer {story_key} {status}"
+```
+
+**TaskList mode (result_delivery_mode=tasklist):**
+
+```yaml
+TaskUpdate:
+  taskId: "{assigned_task_id}"
+  status: "completed"
+  metadata: {"return_value": {return_value_json}}
+```
+
+### P33 Principle Adaptation
+
+- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
+- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
+- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
+
+### P36 — No Team Adaptation Needed
+
+Story Reviewer always uses fresh conversations (Principle 36: Reviewer Fresh). This behavior is identical in both C1 and C1-TEAM modes — each dispatch creates a new team member, ensuring independent review perspective.
+
 ## Headless Persona Loading Protocol
 
 1. Load BMM PM (John) persona via Skill call

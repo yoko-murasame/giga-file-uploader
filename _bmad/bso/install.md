@@ -77,9 +77,9 @@ BMM 必须提供以下 Workflow（供 BSO 的 `workflow_mapping` 引用）：
 | Core Workflows | 4 | story-creation, story-review, dev-execution, code-review |
 | Feature Workflows | 4 | knowledge-research, e2e-inspection, intent-parsing, interactive-guide |
 | Utility Workflows | 6 | health-check, concurrency-control, precise-git-commit, status-validation, lessons-recording, lessons-injection |
-| Commands | 1 | auto-dev-sprint（主入口命令） |
+| Commands | 2 | auto-dev-sprint (C1, Fire-and-Forget), auto-dev-sprint-team (C1-TEAM, Agent Team) |
 | Config | 1 | config.yaml（用户可自定义配置） |
-| **总计** | **22** | 6 + 14 + 1 + 1 |
+| **总计** | **23** | 6 + 14 + 2 + 1 |
 
 ### 状态机架构
 
@@ -249,18 +249,21 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 | # | Command 文件 | 源路径 | 安装路径 |
 |---|-------------|--------|---------|
 | CMD1 | auto-dev-sprint | `src/modules/bso/commands/auto-dev-sprint.md` | `.claude/commands/bso/auto-dev-sprint.md` |
+| CMD2 | auto-dev-sprint-team | `src/modules/bso/commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
 
 ```
 安装流程：
 
-1. 确认 .claude/commands/bso/ 目录已创建（Step 2）
-2. 从模块源目录读取 auto-dev-sprint.md
-3. 复制到 .claude/commands/bso/auto-dev-sprint.md
-4. 同时备份到 _bmad/bso/commands/auto-dev-sprint.md
-5. 验证目标文件存在且内容完整
+对于每个 Command 文件（CMD1-CMD2）：
+  1. 确认 .claude/commands/bso/ 目录已创建（Step 2）
+  2. 从模块源目录读取对应 .md 文件
+  3. 复制到 .claude/commands/bso/{filename}
+  4. 同时备份到 _bmad/bso/commands/{filename}
+  5. 验证目标文件存在且内容完整
 
 安装后用户可通过以下方式调用：
-  /bso:auto-dev-sprint <epic-spec> [options]
+  /bso:auto-dev-sprint <epic-spec> [options]           # Fire-and-Forget 模式 (C1)
+  /bso:auto-dev-sprint-team <epic-spec> [options]      # Agent Team 模式 (C1-TEAM)
 ```
 
 ### Step 6: Configuration Initialization（配置初始化）
@@ -595,17 +598,18 @@ archived_entries: []
 | 19 | lessons-recording | `workflows/lessons-recording/workflow.md` | `_bmad/bso/workflows/lessons-recording/workflow.md` |
 | 20 | lessons-injection | `workflows/lessons-injection/workflow.md` | `_bmad/bso/workflows/lessons-injection/workflow.md` |
 
-### Command（1 个）
+### Command（2 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
 | 21 | auto-dev-sprint | `commands/auto-dev-sprint.md` | `.claude/commands/bso/auto-dev-sprint.md` |
+| 22 | auto-dev-sprint-team | `commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
 
 ### Configuration（1 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
-| 22 | config.yaml | `config.yaml` | `_bmad/bso/config.yaml` |
+| 23 | config.yaml | `config.yaml` | `_bmad/bso/config.yaml` |
 
 ---
 
@@ -793,6 +797,7 @@ Sprint 完成后，检查以下位置：
 ```
 删除以下文件和目录：
   .claude/commands/bso/auto-dev-sprint.md
+  .claude/commands/bso/auto-dev-sprint-team.md
   .claude/commands/bso/                     （若目录为空则删除）
 ```
 
@@ -850,6 +855,7 @@ Sprint 完成后，检查以下位置：
 - [ ] Step 4: 4 个 Feature Workflow 已安装
 - [ ] Step 4: 6 个 Utility Workflow 已安装
 - [ ] Step 5: auto-dev-sprint.md 已安装到 `.claude/commands/bso/`
+- [ ] Step 5: auto-dev-sprint-team.md 已安装到 `.claude/commands/bso/`
 - [ ] Step 6: config.yaml 已生成且用户变量已填充
 - [ ] Step 6: module.yaml 已复制到 `_bmad/bso/`
 - [ ] Step 7: knowledge-base/ 目录结构已创建

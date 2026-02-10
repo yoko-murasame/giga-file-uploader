@@ -40,6 +40,63 @@ Headless — no direct user interaction. Code and test output written to project
 - **⚠️ MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
 - **Resume 策略 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — fix 模式下，Orchestrator 会尝试 resume 上一次 dev/fix 会话，将完整的代码理解和测试上下文带入修复过程。Agent 无需感知 resume 机制（由 Orchestrator 透明处理），但应意识到 fix 模式可能在保留上次对话上下文的情况下执行
 
+## Team Mode: P2P Research Communication (P41)
+
+When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+
+### Replacing needs-research Relay
+
+- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
+- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "knowledge-researcher"
+  content: "RESEARCH_REQUEST: {json_payload}"
+  summary: "Research: {topic} for story {story_key}"
+```
+
+Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
+
+### Result Completion Report (Dual Mode)
+
+**SendMessage mode (result_delivery_mode=sendmessage):**
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "{lead_name}"
+  content: "AGENT_COMPLETE: {return_value_json}"
+  summary: "dev-runner {story_key} {status}"
+```
+
+**TaskList mode (result_delivery_mode=tasklist):**
+
+```yaml
+TaskUpdate:
+  taskId: "{assigned_task_id}"
+  status: "completed"
+  metadata: {"return_value": {return_value_json}}
+```
+
+### P33 Principle Adaptation
+
+- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
+- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
+- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
+
+### P36 Resume Adaptation for Team Mode
+
+Team mode does not support Task tool `resume` parameter. For **fix** mode:
+- Orchestrator creates a new team member with the same subagent_type
+- The new member's `prompt/description` includes injected context from the previous session:
+  - List of files modified during the previous dev/fix session
+  - Test snapshot count and test results summary
+  - Review Runner's findings and fix instructions
+  - Key code understanding points from the previous session
+- This approximates resume behavior through context injection rather than session continuation
+
 ## Headless Persona Loading Protocol
 
 1. Load BMM Dev (Amelia) persona via Skill call

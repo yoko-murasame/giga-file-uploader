@@ -109,6 +109,8 @@ inputs:
     --auto-clear-git-track: true                   # Story 完成后自动清理 git track 文件（默认跟随 config.yaml）
     --force: false                                # 强制覆盖已有锁
     --yolo: false                                 # YOLO 全自动模式：关闭所有用户交互确认点（见 YOLO Mode 章节）
+    --debug-mode: false                            # Bug 修复快捷入口：跳过 Sprint 流程，直接加载 Bug Feedback Protocol（见 Debug Mode 章节）
+    --resume-strategy: "smart"                     # Agent 会话恢复策略：smart / always-new / always-resume（见 Resume Strategy 章节）
 ```
 
 ### Input Validation Rules
@@ -123,6 +125,8 @@ inputs:
 | `--status-file` | 文件路径存在且可读（如提供） | 回退到 `status_file_search_paths` 配置 |
 | `--force` | 布尔值 | 默认 false |
 | `--yolo` | 布尔值 | 默认 false |
+| `--debug-mode` | 布尔值 | 默认 false |
+| `--resume-strategy` | 值为 "smart", "always-new", 或 "always-resume" | 默认使用 `defaults.resume_strategy` |
 
 ---
 
@@ -153,6 +157,79 @@ inputs:
 
 ---
 
+### Debug Mode (--debug-mode)
+
+**Bug 修复快捷入口 — 跳过 Sprint 生命周期，直接加载 User Bug Feedback Protocol。**
+
+当用户已经完成了 Sprint 执行，手动测试后发现了 Bug，需要进入"分诊 → 评估 → 修复 → 确认"流程时，不需要重新走完 Step 1-10 的完整 Sprint 流程，直接通过 `--debug-mode` 跳到 Bug Feedback Protocol。
+
+**触发方式：**
+```bash
+/bso:auto-dev-sprint --debug-mode                     # 直接进入 Bug 修复协议
+/bso:auto-dev-sprint --debug-mode 调试                 # NL 别名触发
+```
+
+**NL 解析映射（在 F3 intent-parsing 中增加识别）：**
+- "调试"、"debug"、"修bug"、"修复bug"、"bug修复"、"我发现了bug"、"有bug" → 映射到 `--debug-mode`
+- "进入调试模式"、"debug mode"、"bug模式" → 映射到 `--debug-mode`
+
+**执行流程：**
+
+1. **Step 0: Principle Recitation** — 仍然强制执行（不可跳过）
+2. **Step 1: Startup & Lock** — 仅加载配置和会话目录，**跳过互斥锁获取**（Bug 修复不需要独占锁）
+3. **跳过 Step 2-8** — 不解析 Epic、不构建队列、不执行 Sprint 循环
+4. **直接进入 User Bug Feedback Protocol** — 从 Phase 1 (Bug 收集) 开始
+5. **P31 红线复述** — 进入 Protocol 前强制复述（已在 Protocol 入口定义）
+6. **后续 Phase 2-4** — 按 Bug Feedback Protocol 正常执行
+
+**与其他参数的关系：**
+
+| 参数组合 | 行为 |
+|---------|------|
+| `--debug-mode` 单独使用 | 直接进入 Bug Feedback Protocol |
+| `--debug-mode` + `--yolo` | `--yolo` 被忽略（Bug 修复流程中用户验证不可跳过） |
+| `--debug-mode` + `epic-spec` | `epic-spec` 被忽略（不执行 Sprint） |
+| `--debug-mode` + `--status-file` | 有效（用于定位 sprint-status.yaml） |
+| `--debug-mode` + `--force` | 有效（如果需要覆盖残留锁） |
+
+---
+
+### Resume Strategy (--resume-strategy)
+
+**Agent 会话恢复策略 — 控制被打回的 Agent 是否 resume 上一次对话。**
+
+原有 Principle 36 定义了"Creator/Executor Resume, Reviewer Fresh"的固定策略。此参数将该策略升级为可配置的，方便不同场景灵活选择。
+
+| 策略 | 行为 | 适用场景 |
+|------|------|---------|
+| `smart` (默认) | P36 原有行为：Creator (C2 revise) 和 Executor (C4 fix) 被打回时 resume 上一次会话；Reviewer (C3, C5) 始终新建对话保持独立视角 | 生产环境推荐，兼顾上下文保留和审查独立性 |
+| `always-new` | 所有 Agent 始终新建对话，不尝试 resume | 调试场景：排查 resume 导致的上下文污染问题；或 Agent 会话频繁过期时的降级方案 |
+| `always-resume` | 所有 Agent（包括 Reviewer）被打回时都尝试 resume（仍遵守 fallback 逻辑：resume 失败则新建） | 实验性：适用于短 Sprint、少量 Story 的场景，最大化上下文复用 |
+
+**CLI 用法：**
+```bash
+/bso:auto-dev-sprint epic5 --resume-strategy smart          # 默认行为
+/bso:auto-dev-sprint epic5 --resume-strategy always-new     # 全部新建
+/bso:auto-dev-sprint epic5 --resume-strategy always-resume  # 全部尽量resume
+```
+
+**NL 解析映射：**
+- "不要恢复对话"、"全部新建"、"fresh start" → 映射到 `--resume-strategy always-new`
+- "尽量恢复"、"保留上下文"、"resume all" → 映射到 `--resume-strategy always-resume`
+- 无相关表述 → 使用默认值 `smart`
+
+**对 Step 7.3 Dispatch 的影响：**
+
+| resume-strategy | C2 create | C2 revise | C3 review | C4 dev | C4 fix | C5 review | F1 | F2 |
+|----------------|-----------|-----------|-----------|--------|--------|-----------|----|----|
+| `smart` | new | resume | new | new | resume | new | new | new |
+| `always-new` | new | new | new | new | new | new | new | new |
+| `always-resume` | new | resume | resume | new | resume | resume | new | new |
+
+**注意：** `always-resume` 模式下 Reviewer resume 会降低审查独立性（确认偏误风险），仅在你明确知道风险时使用。F1 (Knowledge Researcher) 和首次创建/开发始终新建（无历史会话可 resume）。
+
+---
+
 ## Output Schema
 
 ### Output Files
@@ -168,6 +245,58 @@ outputs:
 ---
 
 ## Workflow Steps
+
+### Step 0: Principle Recitation (Mandatory Pre-Flight)
+
+**Goal:** 在执行任何操作之前，主控必须先复述核心约束原则，确保整个 Sprint 生命周期中始终遵守设计契约。此步骤不可跳过、不可简化、不受 `--yolo` 影响。
+
+**Actions:**
+
+1. **输出原则复述块（强制执行）：**
+
+```
+==========================================
+BSO Orchestrator — Principle Recitation
+==========================================
+Session starting. I am the Orchestrator (C1).
+Before any action, I recite my core constraints:
+
+[IDENTITY]
+- I am a THIN DISPATCHER (P31)
+- I am a traffic light, not a driver
+- I route signals, I do not analyze cargo
+
+[ALLOWED ACTIONS]
+1. Read state from sprint-status.yaml
+2. Map state → Agent via dispatch table
+3. Construct minimal params (story_key, mode, session_id)
+4. Dispatch Agent via Skill Call
+5. Read return status field ONLY
+6. Write new state via U4 atomic-write
+7. Output one-line progress log
+8. Record lessons via file operations (U5)
+
+[FORBIDDEN ACTIONS]
+1. Read Story .md file contents
+2. Analyze Epic business requirements
+3. Evaluate code change technical details
+4. Interpret review findings content
+5. Include business descriptions in progress logs
+6. Deep-analyze Agent return results field
+
+[SAFETY NETS]
+- Review round >= 8 → force needs-intervention
+- Sensitive file git commit → block
+- Agent timeout → mark needs-intervention
+- Story Review → NOT skippable by --yolo
+
+Recitation complete. Proceeding to Step 1.
+==========================================
+```
+
+**On Complete:** 复述完毕，继续 Step 1
+
+---
 
 ### Step 1: Startup & Lock
 
@@ -229,10 +358,121 @@ action: "Check file permissions on project root"
 
    | 输入特征 | 分类 | 处理路径 |
    |---------|------|---------|
-   | 空字符串 / `--interactive` | Interactive Trigger | → 转发 F4 interactive-guide |
+   | 空字符串 / `--interactive` | Interactive Trigger | → 执行内联多步骤引导（见下方 §2.Interactive） |
+   | 包含 `--debug-mode` / "调试" / "debug" / "修bug" | Debug Trigger | → 跳过 Sprint 流程，直接进入 Bug Feedback Protocol |
    | 包含 `--` CLI 标志 / YAML / JSON | Precise Parameters | → 直接解析 |
    | 纯 `epicN` 格式 | Precise Parameters | → 直接解析 |
    | 其他自由文本 | Natural Language | → F3 NL 解析 |
+
+#### §2.Interactive: 多步骤交互引导（无参数启动时执行）
+
+当用户无参数运行 `/bso:auto-dev-sprint` 时，执行以下完整引导流程：
+
+**Guide Step 1: Sprint 状态总览**
+
+读取 sprint-status.yaml，展示当前 Sprint 全景：
+
+```
+==========================================
+BSO Sprint 状态总览
+==========================================
+Sprint: {sprint_name}
+Date: {start_date}
+
+Epic 状态:
+#  | Epic    | Total | Done | In-Progress | Backlog | Blocked
+---|---------|-------|------|-------------|---------|--------
+1  | epic-3  |   6   |  4   |      1      |    1    |    0
+2  | epic-4  |   5   |  0   |      0      |    5    |    0
+3  | epic-5  |   8   |  0   |      0      |    8    |    0
+==========================================
+```
+
+等待用户选择: `请选择要执行的 Epic（输入编号、epic名称、或 "all"）:`
+
+**Guide Step 2: 过滤条件**
+
+```
+==========================================
+Story 过滤条件
+==========================================
+[1] incomplete — 仅未完成的 Story（排除 done）(推荐)
+[2] backlog   — 仅 backlog 状态的 Story
+[3] all       — 包含所有状态（含已完成的 Story）
+==========================================
+```
+
+等待用户选择，默认: `1 (incomplete)`
+
+**Guide Step 3: 执行模式**
+
+```
+==========================================
+执行模式选择
+==========================================
+[1] normal     — 标准模式，关键节点暂停确认 (推荐)
+[2] yolo       — 全自动模式，关闭所有用户交互确认
+[3] debug-mode — Bug 修复模式，直接进入 Bug Feedback Protocol
+==========================================
+```
+
+等待用户选择，默认: `1 (normal)`
+
+如果用户选择 `3 (debug-mode)` → 跳过后续引导步骤，直接进入 Bug Feedback Protocol
+
+**Guide Step 4: 审查严格度**
+
+```
+==========================================
+Code Review 审查严格度
+==========================================
+[1] strict  — 修复所有 >= LOW 级别的问题（最严格）
+[2] normal  — 修复 >= MEDIUM 级别的问题 (推荐)
+[3] lenient — 仅修复 HIGH 级别的问题（最宽松）
+==========================================
+```
+
+等待用户选择，默认: `2 (normal)`
+
+**Guide Step 5: E2E 验证配置**
+
+```
+==========================================
+E2E 浏览器验证
+==========================================
+[1] disabled — 跳过 E2E 验证 (推荐，除非有前端 Story)
+[2] enabled  — 启用 E2E 验证（需要 Chrome MCP 或 Playwright MCP）
+==========================================
+```
+
+等待用户选择，默认: `1 (disabled)`
+
+**Guide Step 6: 并行与高级参数**
+
+```
+==========================================
+高级参数配置
+==========================================
+并行数 (parallel):           [1] (输入数字，默认 1)
+Story Review:                [enabled] / disabled
+最大 Code Review 轮数:       [10] (输入数字，默认 10)
+最大 Story Review 轮数:      [3] (输入数字，默认 3)
+预研模式 (pre-research):     [disabled] / enabled
+Agent Resume 策略:           [smart] / always-new / always-resume
+  smart(推荐): Creator/Executor被打回时resume，Reviewer始终新建(P36)
+  always-new: 所有Agent始终新建对话（调试用）
+  always-resume: 所有Agent尽量resume（实验性）
+==========================================
+直接回车使用默认值，或输入要修改的参数
+```
+
+**Guide Step 7: 参数确认**
+
+汇总所有引导步骤的选择，展示完整参数核对表格（与精确参数模式的 Step 2.4 相同格式），等待用户确认 `[Y] 确认执行  [M] 修改参数  [N] 取消`
+
+引导完成后，合并参数进入正常 Step 3 流程。
+
+---
 
 2. **NL 解析路径（路径 C）:**
    - 调用 F3 intent-parsing workflow 进行 LLM 推理
@@ -574,12 +814,14 @@ skill_call:
     mode: "create" | "revise"    # backlog=create, story-doc-improved=revise
     session_id: "{session_id}"
     epic_file_path: "{epic_file_path}"
-  # P36 Resume 策略: revise 模式优先 resume 上一次 Story Creator 会话
+  # P36 Resume 策略（受 --resume-strategy 控制）: revise 模式根据策略决定是否 resume
   resume: >
     IF mode == "revise":
-      lookup agent_sessions["{story_key}"].story_creator.agent_id
-      IF found → resume: "{agent_id}"  (保留创建时的完整上下文)
-      IF not found OR resume fails → 新建对话 (fallback)
+      IF resume_strategy == "always-new" → 始终新建对话
+      ELSE (smart / always-resume):
+        lookup agent_sessions["{story_key}"].story_creator.agent_id
+        IF found → resume: "{agent_id}"  (保留创建时的完整上下文)
+        IF not found OR resume fails → 新建对话 (fallback)
     IF mode == "create":
       始终新建对话 (首次创建无历史会话)
 ```
@@ -593,7 +835,9 @@ skill_call:
     session_id: "{session_id}"
     story_file_path: "{story_file_path}"
     review_round: "{story_review_round}"
-  # P36 Resume 策略: Story Reviewer 始终新建对话（独立视角，防止确认偏误）
+  # P36 Resume 策略（受 --resume-strategy 控制）:
+  # smart/always-new → 始终新建对话（独立视角，防止确认偏误）
+  # always-resume → 尝试 resume（牺牲独立性换取上下文复用，实验性）
 ```
 - **Story Review 跳过判定（严格条件，与 --yolo 完全正交）：**
   ```
@@ -623,7 +867,9 @@ skill_call:
     review_round: "{code_review_round}"
     config_overrides:
       review_strictness_threshold: "{effective_review_strictness_threshold}"
-  # P36 Resume 策略: Review Runner 始终新建对话（独立视角，防止确认偏误）
+  # P36 Resume 策略（受 --resume-strategy 控制）:
+  # smart/always-new → 始终新建对话（独立视角，防止确认偏误）
+  # always-resume → 尝试 resume（牺牲独立性换取上下文复用，实验性）
 ```
 
 **review (needs-fix) → Dev Runner (C4, fix mode):**
@@ -636,11 +882,13 @@ skill_call:
     session_id: "{session_id}"
     config_overrides:
       review_strictness_threshold: "{effective_review_strictness_threshold}"
-  # P36 Resume 策略: fix 模式优先 resume 上一次 Dev Runner 会话
+  # P36 Resume 策略（受 --resume-strategy 控制）: fix 模式根据策略决定是否 resume
   resume: >
-    lookup agent_sessions["{story_key}"].dev_runner.agent_id
-    IF found → resume: "{agent_id}"  (保留开发时的完整上下文)
-    IF not found OR resume fails → 新建对话 (fallback)
+    IF resume_strategy == "always-new" → 始终新建对话
+    ELSE (smart / always-resume):
+      lookup agent_sessions["{story_key}"].dev_runner.agent_id
+      IF found → resume: "{agent_id}"  (保留开发时的完整上下文)
+      IF not found OR resume fails → 新建对话 (fallback)
 ```
 
 **e2e-verify → E2E Inspector (F2):**
@@ -669,7 +917,9 @@ skill_call:
 5. 无论 resume 或新建，返回后都更新 agent-sessions.yaml 中的 agent_id
 ```
 
-**Resume 策略总结（Principle 36: Creator/Executor Resume, Reviewer Fresh）：**
+**Resume 策略总结（Principle 36 — 受 `--resume-strategy` 控制）：**
+
+**smart 模式（默认，P36 原有行为）：**
 
 | Agent | 被打回场景 | Resume 策略 | 理由 |
 |-------|-----------|------------|------|
@@ -679,6 +929,10 @@ skill_call:
 | Review Runner (C5) | 多轮 review | 始终新建对话 | 独立视角，防止确认偏误 |
 | E2E Inspector (F2) | - | 始终新建对话 | 每次全新浏览器验证 |
 | Knowledge Researcher (F1) | - | 始终新建对话 | 无状态查询服务 |
+
+**always-new 模式：** 所有 Agent 始终新建对话，无 resume 尝试。适用于调试 resume 导致的上下文污染。
+
+**always-resume 模式：** 所有 Agent（含 Reviewer）被打回时尝试 resume（首次创建/开发仍为新建，F1/F2 仍为新建）。牺牲审查独立性换取最大上下文复用，实验性质。
 
 #### 7.4 Await Return & Process Result
 
@@ -1169,7 +1423,42 @@ Continue with remaining 7 stories? [Y/N]
 
 **Goal:** 当用户在 Story 完成后自行测试发现 Bug 时，提供结构化的"分诊 → 评估 → 修复 → 用户确认"路径。**调度器全程不参与业务分析**，仅负责消息传达和 Agent 调度。
 
-**触发方式：** 用户在 Sprint 完成后（或中途暂停时）直接告知 AI 发现了 Bug（可以是单个 Bug、单 Story 多 Bug、或跨 Story 批量 Bug）。主控识别到 Bug 反馈意图后，进入此协议。
+**触发方式：** 用户在 Sprint 完成后（或中途暂停时）直接告知 AI 发现了 Bug（可以是单个 Bug、单 Story 多 Bug、或跨 Story 批量 Bug）。主控识别到 Bug 反馈意图后，进入此协议。也可通过 `--debug-mode` 参数直接进入此协议。
+
+#### P31 红线复述（进入 Bug Feedback Protocol 前强制执行）
+
+**在执行 Phase 1 之前，主控必须先输出以下复述块（不可省略、不可简化）：**
+
+```
+==========================================
+[P31 RED LINE] Bug Feedback Protocol 启动
+==========================================
+我是调度器，在整个 Bug 修复流程中，我严格遵守以下约束：
+
+[ALLOW]
+- 原样记录用户的 Bug 描述文本
+- 读取分诊报告的 story_key + bug_id 映射
+- 按 fix_queue 顺序调度 Agent
+- 原样转发 Agent 返回的修复摘要给用户
+- 展示用户选项（F/P/N/V）并路由
+- 调用 U4 变更状态（机械操作）
+
+[DENY]
+- 分析 Bug 描述的技术含义
+- 解读 Bug 的严重度或修复建议
+- 自己判断 Bug 应该归属哪个 Story
+- 对修复内容做评价或补充说明
+- 自己分析 Story 文件内容
+- 自己写 Bug 记录到 Story 文件
+
+核心原则：我是邮递员，不是医生。送信但不看信，叫救护车但不做手术。
+==========================================
+```
+
+**每个 Phase 转换时（Phase 1→2、Phase 2→3、Phase 3→4），主控必须输出一行提醒：**
+```
+[P31 CHECKPOINT] 进入 Phase {N} — 调度器仅执行机械操作，禁止业务分析
+```
 
 ---
 

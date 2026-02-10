@@ -4,7 +4,7 @@
  * Uses ONLY Node.js built-in modules (no fs-extra, no chalk).
  *
  * @module bso/_module-installer/installer
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 const path = require('node:path');
@@ -54,8 +54,11 @@ const UTILITY_WORKFLOWS = [
 
 const ALL_WORKFLOWS = [...CORE_WORKFLOWS, ...FEATURE_WORKFLOWS, ...UTILITY_WORKFLOWS];
 
-// 1 Command
-const COMMAND_FILE = 'auto-dev-sprint.md';
+// 2 Commands (C1 Fire-and-Forget + C1-TEAM Agent Team)
+const COMMAND_FILES = [
+  'auto-dev-sprint.md',
+  'auto-dev-sprint-team.md',
+];
 
 // BMM required agents and workflows
 const REQUIRED_BMM_AGENTS = ['sm', 'pm', 'dev', 'architect'];
@@ -280,38 +283,44 @@ async function installWorkflows(projectRoot, logger) {
 async function installCommands(projectRoot, installedIDEs, logger) {
   log(logger, 'info', '[Step 5] Command Installation');
 
-  const srcPath = path.join(MODULE_ROOT, 'commands', COMMAND_FILE);
+  let installedCount = 0;
 
-  if (!await pathExists(srcPath)) {
-    log(logger, 'error', `  Command 源文件不存在: ${srcPath}`);
-    return false;
-  }
+  for (const cmdFile of COMMAND_FILES) {
+    const srcPath = path.join(MODULE_ROOT, 'commands', cmdFile);
 
-  // Backup to _bmad/bso/commands/
-  const backupDest = path.join(projectRoot, '_bmad', 'bso', 'commands', COMMAND_FILE);
-  await copyFile(srcPath, backupDest);
-  log(logger, 'info', `  备份: ${COMMAND_FILE} → _bmad/bso/commands/`);
+    if (!await pathExists(srcPath)) {
+      log(logger, 'error', `  Command 源文件不存在: ${srcPath}`);
+      return false;
+    }
 
-  // Platform-specific command installation
-  if (installedIDEs && installedIDEs.length > 0) {
-    for (const ide of installedIDEs) {
-      const handler = loadPlatformHandler(ide);
-      if (handler && typeof handler.installCommands === 'function') {
-        const ok = await handler.installCommands({
-          projectRoot,
-          srcPath,
-          commandFile: COMMAND_FILE,
-          logger,
-        });
-        if (!ok) {
-          log(logger, 'error', `  平台 ${ide} Command 安装失败`);
-          return false;
+    // Backup to _bmad/bso/commands/
+    const backupDest = path.join(projectRoot, '_bmad', 'bso', 'commands', cmdFile);
+    await copyFile(srcPath, backupDest);
+    log(logger, 'info', `  备份: ${cmdFile} → _bmad/bso/commands/`);
+
+    // Platform-specific command installation
+    if (installedIDEs && installedIDEs.length > 0) {
+      for (const ide of installedIDEs) {
+        const handler = loadPlatformHandler(ide);
+        if (handler && typeof handler.installCommands === 'function') {
+          const ok = await handler.installCommands({
+            projectRoot,
+            srcPath,
+            commandFile: cmdFile,
+            logger,
+          });
+          if (!ok) {
+            log(logger, 'error', `  平台 ${ide} Command ${cmdFile} 安装失败`);
+            return false;
+          }
         }
       }
     }
+
+    installedCount++;
   }
 
-  log(logger, 'success', 'Step 5 完成: Command 已安装');
+  log(logger, 'success', `Step 5 完成: ${installedCount} 个 Command 已安装`);
   return true;
 }
 
@@ -503,18 +512,26 @@ async function healthCheck(projectRoot, config, coreConfig, installedIDEs, logge
     log(logger, 'error', `  Workflow 文件: ${wfCount}/${ALL_WORKFLOWS.length}`);
   }
 
-  // [File Integrity] — Command
-  const cmdPath = path.join(projectRoot, '.claude', 'commands', 'bso', COMMAND_FILE);
-  if (await pathExists(cmdPath)) {
-    log(logger, 'success', '  Command 文件: 1/1');
-  } else {
-    const cmdBackup = path.join(projectRoot, '_bmad', 'bso', 'commands', COMMAND_FILE);
-    if (await pathExists(cmdBackup)) {
-      log(logger, 'info', '  Command 备份文件存在（激活文件取决于平台）');
-    } else {
-      issues.required.push('Command 文件缺失');
-      log(logger, 'error', '  Command 文件: 0/1');
+  // [File Integrity] — Commands (2 total)
+  let cmdActiveCount = 0;
+  let cmdBackupCount = 0;
+  for (const cmdFile of COMMAND_FILES) {
+    const cmdPath = path.join(projectRoot, '.claude', 'commands', 'bso', cmdFile);
+    if (await pathExists(cmdPath)) {
+      cmdActiveCount++;
     }
+    const cmdBackup = path.join(projectRoot, '_bmad', 'bso', 'commands', cmdFile);
+    if (await pathExists(cmdBackup)) {
+      cmdBackupCount++;
+    }
+  }
+  if (cmdActiveCount === COMMAND_FILES.length) {
+    log(logger, 'success', `  Command 文件: ${cmdActiveCount}/${COMMAND_FILES.length}`);
+  } else if (cmdBackupCount === COMMAND_FILES.length) {
+    log(logger, 'info', `  Command 备份文件: ${cmdBackupCount}/${COMMAND_FILES.length}（激活文件取决于平台）`);
+  } else {
+    issues.required.push(`Command 文件不完整: 激活 ${cmdActiveCount}/${COMMAND_FILES.length}, 备份 ${cmdBackupCount}/${COMMAND_FILES.length}`);
+    log(logger, 'error', `  Command 文件: 激活 ${cmdActiveCount}/${COMMAND_FILES.length}, 备份 ${cmdBackupCount}/${COMMAND_FILES.length}`);
   }
 
   // [File Integrity] — Config files

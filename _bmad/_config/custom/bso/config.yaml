@@ -113,3 +113,23 @@ research_relay:
   max_requests_per_dispatch: 5   # 单次 Agent 返回 needs-research 最多携带的研究请求数
   timeout_seconds: 300           # 单次 KR 调度超时（秒）
   allow_recursive: true          # 允许 Agent 二次返回 needs-research（累计不超过 max_calls_per_story）
+
+# Agent Team Mode Configuration (C1-TEAM only)
+# C1-TEAM 使用 Claude Code Agent Team 架构，KR 常驻 + P2P 研究通信
+# 仅当用户选择 /bso:auto-dev-sprint-team 命令时生效
+team_mode:
+  team_name_prefix: "bso-sprint"          # Team 名称前缀，完整名: {prefix}-{session_id}
+  kr_startup_timeout: 30                  # KR 常驻队友创建后等待就绪超时(秒)
+  agent_shutdown_timeout: 15              # 向 Agent 发送 shutdown_request 后等待响应超时(秒)
+  research_message_timeout: 300           # Agent 发送研究请求后等待 KR 回复超时(秒)
+
+  # Result delivery mode — Agent 完成后如何传递结果给主控
+  result_delivery_mode: "sendmessage"     # sendmessage | tasklist
+  # sendmessage: Agent 通过 SendMessage(AGENT_COMPLETE) 回报主控，主控等待消息自动递送
+  # tasklist:    Agent 通过 TaskUpdate(completed) + metadata 写入结果，主控通过 TaskList 监控
+
+  # Message protocol prefixes — Agent 和 KR 之间的消息格式约定
+  message_protocol:
+    agent_complete: "AGENT_COMPLETE"       # 临时 Agent → 主控: 任务完成报告
+    research_request: "RESEARCH_REQUEST"   # 任意 Agent → KR: 研究请求
+    research_result: "RESEARCH_RESULT"     # KR → 请求者: 研究结果

@@ -35,6 +35,7 @@ Headless — no direct user interaction. Output is research report markdown file
 - Knowledge capacity management: index upper limit 200 entries, LRU eviction to `_archived-index.yaml`, version-aware invalidation on framework major version change, 60-day auto-archive (Principle 16)
 - Lessons injection budget: max 10 entries per phase injection, sorted by recency + relevance — prevents prompt token bloat when lessons accumulate (Principle 25)
 - Report confidence honestly: distinguish between "verified via official docs" vs "inferred from community examples" vs "partial coverage only"
+- Team mode persistent residence: maintain knowledge cache context across Stories when running as Agent Team member, accumulate cache hit rate through session persistence (Principle 40)
 
 ## Headless Persona Loading Protocol
 
@@ -59,6 +60,98 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 |------|-------|----------|
 | `research` | Technical question + framework context | Cache check → Context7 → DeepWiki → WebSearch → generate report → update index |
 | `lessons-inject` | Phase tag (e.g., `dev-execution`) | Read `_lessons-learned.md` → filter by phase → sort by recency → select top 10 → format and inject |
+| `team-resident` | Team member identity (C1-TEAM) | Persistent idle → receive RESEARCH_REQUEST via SendMessage → execute research → SendMessage result back → return to idle |
+
+## Team Mode: Persistent Residence Protocol (P40)
+
+When running as an Agent Team member (created by C1-TEAM command), KR enters **persistent residence mode**:
+
+### Persistent Behavior
+
+1. **Do not exit after initialization** -- enter idle state and wait for messages
+2. **Listen for SendMessage** -- automatically receive messages from other team members
+3. **Message-driven execution** -- execute research when receiving RESEARCH_REQUEST messages
+4. **Direct result delivery** -- send results back to requester via SendMessage (no Orchestrator relay)
+5. **Cross-Story cache accumulation** -- persistent session keeps index.yaml context alive, improving cache hit rate across Stories
+
+### Message Protocol
+
+**Incoming request format (from any team member):**
+
+```
+RESEARCH_REQUEST: {
+  "story_key": "3-1",
+  "requesting_agent": "dev-runner-3-1",
+  "queries": [
+    {
+      "query": "How to configure virtual scrolling with dynamic row heights?",
+      "framework": "vue-easytable",
+      "framework_version": "2.x",
+      "topic": "virtual scrolling configuration",
+      "tags": ["virtual-scroll", "row-height", "performance"],
+      "priority": "high"
+    }
+  ]
+}
+```
+
+**Outgoing result format (to requesting agent):**
+
+```
+RESEARCH_RESULT: {
+  "story_key": "3-1",
+  "results": [
+    {
+      "query": "How to configure virtual scrolling with dynamic row heights?",
+      "status": "success",
+      "report_path": "frameworks/vue-easytable/virtual-scroll.md",
+      "confidence": "high",
+      "summary": "Use <ve-table> with virtual-scroll-option prop, set fixedRowHeight..."
+    }
+  ]
+}
+```
+
+### Request Processing Flow (Team Mode)
+
+```
+1. Receive RESEARCH_REQUEST via SendMessage
+2. Parse JSON payload -- extract requesting_agent, queries[]
+3. For each query in queries[]:
+   a. Execute standard Research Mode flow (cache check -> priority chain -> report)
+   b. Collect results
+4. Format RESEARCH_RESULT JSON
+5. SendMessage(type="message", recipient="{requesting_agent}", content="RESEARCH_RESULT: {json}")
+6. Return to idle -- wait for next message
+```
+
+### Comparison: Fire-and-Forget vs Team Mode
+
+| Aspect | F&F Mode (C1) | Team Mode (C1-TEAM) |
+|--------|---------------|---------------------|
+| Lifecycle | New instance per dispatch, destroyed after return | Persistent for entire Sprint |
+| Invocation | Orchestrator skill_call dispatch | Other Agents SendMessage directly |
+| Result delivery | Return value to Orchestrator | SendMessage to requesting agent |
+| Cache context | Reload index.yaml each time | Persistent in-session, higher hit rate |
+| Budget tracking | Per-dispatch isolated counter | Global counter across all requests in Sprint |
+| Lessons injection | Separate dispatch per agent | Can be requested via SendMessage too |
+
+### Shutdown Protocol
+
+When receiving `shutdown_request`:
+
+1. Complete any in-progress research request (do not abandon mid-research)
+2. Ensure index.yaml latest state is written to disk
+3. Log: `[KR-TEAM] Shutdown acknowledged, {N} research requests served this Sprint`
+4. Send `shutdown_response: approve`
+5. Exit
+
+### Budget Adaptation for Team Mode
+
+- Per-story budget (max_calls_per_story) still applies -- KR maintains a `{story_key -> call_count}` map
+- When a request arrives for a story that has exhausted budget, return immediately with `status: "budget-exhausted"`
+- Cache hits do NOT consume budget (same as F&F mode)
+- Budget map resets when story_key changes (new Story = fresh budget)
 
 ## Skill Call Parameters (received from caller)
 

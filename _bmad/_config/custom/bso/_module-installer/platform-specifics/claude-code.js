@@ -40,8 +40,11 @@ const AGENT_FILES = [
   'knowledge-researcher.md',
 ];
 
-// 1 Command
-const COMMAND_FILE = 'auto-dev-sprint.md';
+// 2 Commands (C1 Fire-and-Forget + C1-TEAM Agent Team)
+const COMMAND_FILES = [
+  'auto-dev-sprint.md',
+  'auto-dev-sprint-team.md',
+];
 
 /**
  * Install Agent activation files to .claude/agents/bso-{name}.md
@@ -81,8 +84,9 @@ async function installAgents({ projectRoot, srcDir, agentFiles = AGENT_FILES, lo
 }
 
 /**
- * Install Command file to .claude/commands/bso/auto-dev-sprint.md
- * Per install.md Step 5.
+ * Install Command file to .claude/commands/bso/{commandFile}
+ * Per install.md Step 5. Called once per command file by installer.js.
+ * Supports: auto-dev-sprint.md (C1) + auto-dev-sprint-team.md (C1-TEAM)
  *
  * @param {Object} options
  * @param {string} options.projectRoot - Project root absolute path
@@ -91,7 +95,7 @@ async function installAgents({ projectRoot, srcDir, agentFiles = AGENT_FILES, lo
  * @param {Object} options.logger - Logger instance
  * @returns {Promise<boolean>}
  */
-async function installCommands({ projectRoot, srcPath, commandFile = COMMAND_FILE, logger }) {
+async function installCommands({ projectRoot, srcPath, commandFile, logger }) {
   const destDir = path.join(projectRoot, '.claude', 'commands', 'bso');
   await ensureDir(destDir);
 

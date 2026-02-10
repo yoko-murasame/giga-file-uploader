@@ -37,6 +37,56 @@ Headless — no direct user interaction. Output is E2E report files with screens
 - **P32 Git Exit Gate — EXEMPT:** E2E Inspector outputs (screenshots, E2E reports) are written exclusively to `.sprint-session/` which is a runtime directory outside git tracking. No git commit is required before returning to Orchestrator. This is an intentional exemption from Principle 32 (Mandatory Git Exit Gate)
 - **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果通过 resume 对话注入。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 
+## Team Mode: P2P Research Communication (P41)
+
+When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+
+### Replacing needs-research Relay
+
+- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
+- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "knowledge-researcher"
+  content: "RESEARCH_REQUEST: {json_payload}"
+  summary: "Research: {topic} for story {story_key}"
+```
+
+Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
+
+### Result Completion Report (Dual Mode)
+
+**SendMessage mode (result_delivery_mode=sendmessage):**
+
+```yaml
+SendMessage:
+  type: "message"
+  recipient: "{lead_name}"
+  content: "AGENT_COMPLETE: {return_value_json}"
+  summary: "e2e-inspector {story_key} {status}"
+```
+
+**TaskList mode (result_delivery_mode=tasklist):**
+
+```yaml
+TaskUpdate:
+  taskId: "{assigned_task_id}"
+  status: "completed"
+  metadata: {"return_value": {return_value_json}}
+```
+
+### P33 Principle Adaptation
+
+- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
+- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
+- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
+
+### P36 — No Team Adaptation Needed
+
+E2E Inspector always uses fresh conversations. This behavior is identical in both C1 and C1-TEAM modes.
+
 ## Headless Persona Loading Protocol
 
 1. Load BMM Dev (Amelia) persona via Skill call

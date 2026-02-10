@@ -61,3 +61,16 @@ git_squash_strategy:
       label: "Per Phase — One commit per lifecycle phase"
     - value: "none"
       label: "None — Keep all commits (for debugging)"
+
+team_mode_dispatch:
+  prompt:
+    - "Default dispatch mode for Sprint Orchestrator?"
+    - "fire-and-forget = Classic C1 mode, Orchestrator-mediated research relay"
+    - "agent-team = C1-TEAM mode, persistent KR with P2P research communication"
+  default: "fire-and-forget"
+  result: "{value}"
+  single-select:
+    - value: "fire-and-forget"
+      label: "Fire-and-Forget — Classic mode, Orchestrator-mediated research relay (C1)"
+    - value: "agent-team"
+      label: "Agent Team — Persistent KR, P2P research communication (C1-TEAM)"
