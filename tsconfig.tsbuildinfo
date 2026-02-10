@@ -1,1 +1,1 @@
-{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/test/setup.ts"],"version":"5.9.3"}
+{"root":["./src/app.test.tsx","./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/history/historypage.tsx","./src/components/shared/tabnav.test.tsx","./src/components/shared/tabnav.tsx","./src/components/upload/uploadpage.tsx","./src/lib/tauri.ts","./src/stores/appstore.test.ts","./src/stores/appstore.ts","./src/stores/historystore.ts","./src/stores/uploadstore.ts","./src/test/setup.ts","./src/types/app.ts"],"version":"5.9.3"}
