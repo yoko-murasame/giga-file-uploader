@@ -46,10 +46,10 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: 文件输入与上传队列管理
-  epic-2: in-progress
+  epic-2: done
   2-1-file-drag-drop-input-and-drop-zone: done
   2-2-file-picker-input: done
-  2-3-upload-file-list-preview-and-management: review
+  2-3-upload-file-list-preview-and-management: done
   epic-2-retrospective: optional
 
   # Epic 3: 核心上传引擎与链接产出
