@@ -25,7 +25,7 @@ export function useDragDrop() {
   const prefersReducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     getReducedMotionSnapshot,
-    getReducedMotionServerSnapshot,
+    getReducedMotionServerSnapshot
   );
   const addFiles = useUploadStore((s) => s.addFiles);
 
@@ -41,7 +41,7 @@ export function useDragDrop() {
         console.error('Failed to resolve dropped paths:', error);
       }
     },
-    [addFiles],
+    [addFiles]
   );
 
   useEffect(() => {

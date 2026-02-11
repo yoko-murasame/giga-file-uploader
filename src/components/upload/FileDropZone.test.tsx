@@ -29,9 +29,7 @@ describe('FileDropZone', () => {
   describe('idle state (not collapsed)', () => {
     it('should render the default drop zone text', () => {
       render(<FileDropZone />);
-      expect(
-        screen.getByText('将文件拖到这里，或点击选择文件'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('将文件拖到这里，或点击选择文件')).toBeInTheDocument();
     });
 
     it('should have role="button" accessibility attribute', () => {
@@ -83,10 +81,7 @@ describe('FileDropZone', () => {
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       await user.click(dropZone);
 
-      expect(mockResolveDroppedPaths).toHaveBeenCalledWith([
-        '/tmp/test.txt',
-        '/tmp/image.png',
-      ]);
+      expect(mockResolveDroppedPaths).toHaveBeenCalledWith(['/tmp/test.txt', '/tmp/image.png']);
       expect(addFilesSpy).toHaveBeenCalledWith(mockEntries);
     });
 
@@ -131,32 +126,23 @@ describe('FileDropZone', () => {
       const user = userEvent.setup();
       mockOpenFilePicker.mockRejectedValue(new Error('Dialog plugin error'));
 
-      const consoleSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       render(<FileDropZone />);
       const dropZone = screen.getByRole('button', { name: '添加文件' });
       await user.click(dropZone);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to open file picker:',
-        expect.any(Error),
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to open file picker:', expect.any(Error));
       consoleSpy.mockRestore();
     });
 
     it('should handle resolveDroppedPaths rejection after successful file selection', async () => {
       const user = userEvent.setup();
       mockOpenFilePicker.mockResolvedValue(['/tmp/test.txt']);
-      mockResolveDroppedPaths.mockRejectedValue(
-        new Error('IPC resolve error'),
-      );
+      mockResolveDroppedPaths.mockRejectedValue(new Error('IPC resolve error'));
 
       const addFilesSpy = vi.spyOn(useUploadStore.getState(), 'addFiles');
-      const consoleSpy = vi
-        .spyOn(console, 'error')
-        .mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       render(<FileDropZone />);
       const dropZone = screen.getByRole('button', { name: '添加文件' });
@@ -165,10 +151,7 @@ describe('FileDropZone', () => {
       expect(mockOpenFilePicker).toHaveBeenCalledOnce();
       expect(mockResolveDroppedPaths).toHaveBeenCalledWith(['/tmp/test.txt']);
       expect(addFilesSpy).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to open file picker:',
-        expect.any(Error),
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Failed to open file picker:', expect.any(Error));
       consoleSpy.mockRestore();
     });
 
@@ -195,7 +178,7 @@ describe('FileDropZone', () => {
         () =>
           new Promise<string[] | null>((resolve) => {
             resolveFirst = resolve;
-          }),
+          })
       );
 
       render(<FileDropZone />);
@@ -216,9 +199,7 @@ describe('FileDropZone', () => {
   describe('collapsed state', () => {
     it('should render collapsed text', () => {
       render(<FileDropZone collapsed />);
-      expect(
-        screen.getByText('继续拖拽或点击添加文件'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('继续拖拽或点击添加文件')).toBeInTheDocument();
     });
 
     it('should still have role="button"', () => {

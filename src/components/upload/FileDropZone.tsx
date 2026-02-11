@@ -40,11 +40,10 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
         handleClick();
       }
     },
-    [handleClick],
+    [handleClick]
   );
 
-  const transitionClass =
-    !prefersReducedMotion ? 'transition-all duration-200' : '';
+  const transitionClass = !prefersReducedMotion ? 'transition-all duration-200' : '';
 
   if (collapsed) {
     return (

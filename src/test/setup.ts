@@ -30,5 +30,5 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 // Mock Tauri event API
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(),
+  listen: vi.fn().mockResolvedValue(() => {}),
 }));

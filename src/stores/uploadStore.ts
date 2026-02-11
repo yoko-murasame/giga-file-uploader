@@ -1,16 +1,24 @@
 import { create } from 'zustand';
 
-import type { FileEntry, PendingFile } from '@/types/upload';
+import { startUpload as startUploadIpc } from '@/lib/tauri';
+
+import type { FileEntry, PendingFile, ProgressPayload, UploadTaskProgress } from '@/types/upload';
 
 interface UploadState {
   pendingFiles: PendingFile[];
+  activeTasks: Record<string, UploadTaskProgress>;
   addFiles: (entries: FileEntry[]) => void;
   removeFile: (id: string) => void;
   clearFiles: () => void;
+  startUpload: (lifetime: number) => Promise<void>;
+  updateProgress: (payload: ProgressPayload) => void;
+  setTaskError: (taskId: string) => void;
+  setTaskCompleted: (taskId: string) => void;
 }
 
-export const useUploadStore = create<UploadState>((set) => ({
+export const useUploadStore = create<UploadState>((set, get) => ({
   pendingFiles: [],
+  activeTasks: {},
 
   addFiles: (entries) =>
     set((state) => ({
@@ -23,7 +31,7 @@ export const useUploadStore = create<UploadState>((set) => ({
             filePath: entry.filePath,
             fileSize: entry.fileSize,
             status: 'pending',
-          }),
+          })
         ),
       ],
     })),
@@ -34,4 +42,72 @@ export const useUploadStore = create<UploadState>((set) => ({
     })),
 
   clearFiles: () => set({ pendingFiles: [] }),
+
+  startUpload: async (lifetime) => {
+    const { pendingFiles } = get();
+    if (pendingFiles.length === 0) return;
+
+    const files: FileEntry[] = pendingFiles.map((f) => ({
+      fileName: f.fileName,
+      filePath: f.filePath,
+      fileSize: f.fileSize,
+    }));
+
+    const taskIds = await startUploadIpc(files, { lifetime });
+
+    const newActiveTasks: Record<string, UploadTaskProgress> = {};
+    for (const taskId of taskIds) {
+      newActiveTasks[taskId] = {
+        taskId,
+        fileProgress: 0,
+        shards: [],
+        status: 'uploading',
+      };
+    }
+
+    set((state) => ({
+      pendingFiles: [],
+      activeTasks: { ...state.activeTasks, ...newActiveTasks },
+    }));
+  },
+
+  updateProgress: (payload) =>
+    set((state) => {
+      const existing = state.activeTasks[payload.taskId];
+      if (!existing) return state;
+      return {
+        activeTasks: {
+          ...state.activeTasks,
+          [payload.taskId]: {
+            ...existing,
+            fileProgress: payload.fileProgress,
+            shards: payload.shards,
+          },
+        },
+      };
+    }),
+
+  setTaskError: (taskId) =>
+    set((state) => {
+      const existing = state.activeTasks[taskId];
+      if (!existing) return state;
+      return {
+        activeTasks: {
+          ...state.activeTasks,
+          [taskId]: { ...existing, status: 'error' },
+        },
+      };
+    }),
+
+  setTaskCompleted: (taskId) =>
+    set((state) => {
+      const existing = state.activeTasks[taskId];
+      if (!existing) return state;
+      return {
+        activeTasks: {
+          ...state.activeTasks,
+          [taskId]: { ...existing, status: 'completed', fileProgress: 100 },
+        },
+      };
+    }),
 }));

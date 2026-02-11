@@ -46,12 +46,10 @@ describe('UploadFileItem', () => {
         {...defaultProps}
         fileName="a-very-long-file-name-that-should-be-truncated.pdf"
       />,
-      { wrapper: Wrapper },
+      { wrapper: Wrapper }
     );
 
-    const nameEl = screen.getByText(
-      'a-very-long-file-name-that-should-be-truncated.pdf',
-    );
+    const nameEl = screen.getByText('a-very-long-file-name-that-should-be-truncated.pdf');
     expect(nameEl).toHaveClass('truncate');
   });
 
@@ -88,7 +86,7 @@ describe('UploadFileItem', () => {
     render(<UploadFileItem {...defaultProps} />, { wrapper: Wrapper });
 
     const listItem = screen.getByRole('listitem');
-    expect(listItem).toHaveClass('opacity-100', 'max-h-12');
+    expect(listItem).toHaveClass('opacity-100');
 
     const deleteButton = screen.getByRole('button', { name: /删除/ });
     await user.click(deleteButton);

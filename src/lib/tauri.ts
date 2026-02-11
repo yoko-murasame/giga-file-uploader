@@ -15,9 +15,7 @@ export { listen } from '@tauri-apps/api/event';
 import type { FileEntry } from '@/types/upload';
 
 /** Resolve dropped file/directory paths into a flat list of file entries. */
-export async function resolveDroppedPaths(
-  paths: string[],
-): Promise<FileEntry[]> {
+export async function resolveDroppedPaths(paths: string[]): Promise<FileEntry[]> {
   return invoke<FileEntry[]>('resolve_dropped_paths', { paths });
 }
 
@@ -26,4 +24,17 @@ export async function openFilePicker(): Promise<string[] | null> {
   const selected = await open({ multiple: true });
   if (selected === null) return null;
   return Array.isArray(selected) ? selected : [selected];
+}
+
+/** Start uploading files. Returns task IDs for each file. */
+export async function startUpload(
+  files: FileEntry[],
+  config: { lifetime: number }
+): Promise<string[]> {
+  return invoke<string[]>('start_upload', { files, config });
+}
+
+/** Cancel an active upload task. */
+export async function cancelUpload(taskId: string): Promise<void> {
+  return invoke<void>('cancel_upload', { taskId });
 }

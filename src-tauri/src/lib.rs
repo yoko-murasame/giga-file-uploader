@@ -1,3 +1,5 @@
+use tauri::Manager;
+
 pub mod api;
 pub mod commands;
 pub mod error;
@@ -11,7 +13,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .manage(commands::upload::UploadState::default())
+        .setup(|app| {
+            let upload_state = commands::upload::UploadState::new(app.handle().clone());
+            app.manage(upload_state);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::files::resolve_dropped_paths,
             commands::upload::start_upload,

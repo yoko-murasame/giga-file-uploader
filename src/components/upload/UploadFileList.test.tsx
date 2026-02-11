@@ -52,9 +52,7 @@ describe('UploadFileList', () => {
   });
 
   it('should not render list when files array is empty', () => {
-    const { container } = render(
-      <UploadFileList files={[]} onRemoveFile={vi.fn()} />,
-    );
+    const { container } = render(<UploadFileList files={[]} onRemoveFile={vi.fn()} />);
 
     expect(container.firstChild).toBeNull();
   });

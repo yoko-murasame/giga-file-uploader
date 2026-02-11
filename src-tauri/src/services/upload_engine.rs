@@ -14,6 +14,7 @@ use crate::error::AppError;
 use crate::models::file::FileEntry;
 use crate::models::upload::*;
 use crate::services::chunk_manager;
+use crate::services::progress::ProgressAggregator;
 use crate::services::retry_engine::{retry_upload_chunk, RetryPolicy, UploadErrorPayload};
 
 /// Default concurrent chunk uploads per shard.
@@ -21,18 +22,23 @@ pub const DEFAULT_CONCURRENT_CHUNKS: usize = 8;
 
 /// Upload scheduling entry point. Spawns an independent tokio task for each file
 /// and returns the list of task IDs immediately (non-blocking).
+#[allow(clippy::too_many_arguments)]
 pub async fn start(
     files: Vec<FileEntry>,
     config: UploadConfig,
     api: &GigafileApiV1,
     app: tauri::AppHandle,
     cancel_flags: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    progress: Arc<ProgressAggregator>,
 ) -> crate::error::Result<Vec<String>> {
     // 1. Discover server
     let server_url = api.discover_server().await?;
 
     // 2. Create UploadTask for each file and spawn independent tasks
     let mut task_ids = Vec::with_capacity(files.len());
+
+    // Start progress emitter once for this batch
+    progress.start_emitter();
 
     for file in files {
         let task_id = uuid::Uuid::new_v4().simple().to_string();
@@ -46,6 +52,16 @@ pub async fn start(
                 s
             })
             .collect();
+
+        // Register progress tracking for this task
+        progress
+            .register_task(
+                task_id.clone(),
+                file.file_name.clone(),
+                file.file_size,
+                &shards,
+            )
+            .await;
 
         let task = UploadTask {
             task_id: task_id.clone(),
@@ -72,6 +88,7 @@ pub async fn start(
         let task_id_for_upload = task_id.clone();
         let file_name = file.file_name.clone();
         let app_clone = app.clone();
+        let progress_clone = progress.clone();
         tokio::spawn(async move {
             let result = upload_file(
                 task,
@@ -80,12 +97,14 @@ pub async fn start(
                 cancel_flag,
                 app_clone,
                 task_id_for_upload,
+                progress_clone.clone(),
             )
             .await;
             if let Err(e) = &result {
                 log::error!("Upload failed for file '{}': {}", file_name, e);
             }
-            // Clean up cancel flag
+            // Clean up progress tracking and cancel flag
+            progress_clone.remove_task(&task_id_clone).await;
             let mut flags = cancel_flags_clone.lock().await;
             flags.remove(&task_id_clone);
         });
@@ -104,16 +123,13 @@ async fn upload_file(
     cancel_flag: Arc<AtomicBool>,
     app: tauri::AppHandle,
     task_id: String,
+    progress: Arc<ProgressAggregator>,
 ) -> crate::error::Result<()> {
     task.status = UploadStatus::Uploading;
 
     for shard in &mut task.shards {
         if cancel_flag.load(Ordering::Relaxed) {
             task.status = UploadStatus::Error;
-            // TODO(Story 3.5): Distinguish cancellation from errors for frontend.
-            // Options: (a) add `cancelled: bool` field to UploadErrorPayload,
-            // or (b) emit a separate `upload:cancelled` event instead of reusing
-            // `upload:error`. Currently frontend must parse error_message string.
             let _ = app.emit(
                 "upload:error",
                 UploadErrorPayload {
@@ -133,10 +149,15 @@ async fn upload_file(
             &cancel_flag,
             &app,
             &task_id,
+            &progress,
         )
         .await
         {
             task.status = UploadStatus::Error;
+            // Update shard status to Error in progress tracker
+            progress
+                .update_shard_status(&task_id, shard.shard_index, ShardStatus::Error)
+                .await;
             let _ = app.emit(
                 "upload:error",
                 UploadErrorPayload {
@@ -170,14 +191,23 @@ async fn upload_shard(
     cancel_flag: &Arc<AtomicBool>,
     app: &tauri::AppHandle,
     task_id: &str,
+    progress: &Arc<ProgressAggregator>,
 ) -> crate::error::Result<()> {
     shard.status = ShardStatus::Uploading;
+    progress
+        .update_shard_status(task_id, shard.shard_index, ShardStatus::Uploading)
+        .await;
+
     let cookie_jar = Arc::new(reqwest::cookie::Jar::default());
     let total_chunks = shard.chunks.len() as u32;
     let retry_policy = RetryPolicy::default();
 
+    // Get progress counter for this shard
+    let counter = progress.get_shard_counter(task_id, shard.shard_index).await;
+
     // --- First chunk serial (establish Cookie session) ---
     let first_chunk = &shard.chunks[0];
+    let first_chunk_size = first_chunk.size;
     let first_data = read_chunk_data(file_path, first_chunk.offset, first_chunk.size).await?;
     let resp = {
         let mut first_data_opt = Some(first_data);
@@ -208,10 +238,6 @@ async fn upload_shard(
                         Some(d) => d,
                         None => read_chunk_data(&file_path, first_offset, first_size).await?,
                     };
-                    // TODO: make GigafileApiV1 Clone to avoid per-retry construction.
-                    // Currently creates a new reqwest::Client (TLS context, connection pool)
-                    // on each retry attempt. Fix: impl Clone on GigafileApiV1, create once
-                    // outside closure, clone in. (Performance debt for follow-up story)
                     let api = GigafileApiV1::new()?;
                     let params = ChunkUploadParams {
                         data,
@@ -231,9 +257,17 @@ async fn upload_shard(
     };
     shard.chunks[0].status = ChunkStatus::Completed;
 
+    // Progress: accumulate first chunk bytes after successful upload
+    if let Some(ref c) = counter {
+        c.fetch_add(first_chunk_size, Ordering::Relaxed);
+    }
+
     if total_chunks == 1 {
         shard.download_url = resp.download_url;
         shard.status = ShardStatus::Completed;
+        progress
+            .update_shard_status(task_id, shard.shard_index, ShardStatus::Completed)
+            .await;
         return Ok(());
     }
 
@@ -245,6 +279,9 @@ async fn upload_shard(
     for chunk in &shard.chunks[1..] {
         if cancel_flag.load(Ordering::Relaxed) {
             shard.status = ShardStatus::Error;
+            progress
+                .update_shard_status(task_id, shard.shard_index, ShardStatus::Error)
+                .await;
             return Err(AppError::Internal("Upload cancelled by user".into()));
         }
 
@@ -267,6 +304,7 @@ async fn upload_shard(
         let app_clone = app.clone();
         let task_id_owned = task_id.to_string();
         let retry_policy = retry_policy.clone();
+        let progress_counter = counter.clone();
 
         let handle = tokio::spawn(async move {
             let resp = retry_upload_chunk(
@@ -284,8 +322,6 @@ async fn upload_shard(
                     let cookie_jar = cookie_jar.clone();
                     async move {
                         let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
-                        // TODO: make GigafileApiV1 Clone to avoid per-retry construction.
-                        // See first-chunk closure above for details. (Performance debt)
                         let api = GigafileApiV1::new()?;
                         let params = ChunkUploadParams {
                             data,
@@ -302,6 +338,11 @@ async fn upload_shard(
                 },
             )
             .await?;
+
+            // Progress: accumulate chunk bytes after successful upload
+            if let Some(ref c) = progress_counter {
+                c.fetch_add(chunk_size, Ordering::Relaxed);
+            }
 
             // Ordered completion: wait for our turn
             loop {
@@ -329,10 +370,16 @@ async fn upload_shard(
             Ok(Ok(resp)) => resp,
             Ok(Err(e)) => {
                 cancel_flag.store(true, Ordering::Relaxed);
+                progress
+                    .update_shard_status(task_id, shard.shard_index, ShardStatus::Error)
+                    .await;
                 return Err(e);
             }
             Err(e) => {
                 cancel_flag.store(true, Ordering::Relaxed);
+                progress
+                    .update_shard_status(task_id, shard.shard_index, ShardStatus::Error)
+                    .await;
                 return Err(AppError::Internal(format!("Task join error: {}", e)));
             }
         };
@@ -347,6 +394,9 @@ async fn upload_shard(
     }
     shard.download_url = last_url;
     shard.status = ShardStatus::Completed;
+    progress
+        .update_shard_status(task_id, shard.shard_index, ShardStatus::Completed)
+        .await;
 
     Ok(())
 }

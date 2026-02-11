@@ -22,8 +22,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
 const mockResolveDroppedPaths = vi.fn<(paths: string[]) => Promise<FileEntry[]>>();
 
 vi.mock('@/lib/tauri', () => ({
-  resolveDroppedPaths: (...args: unknown[]) =>
-    mockResolveDroppedPaths(args[0] as string[]),
+  resolveDroppedPaths: (...args: unknown[]) => mockResolveDroppedPaths(args[0] as string[]),
   invoke: vi.fn(),
   listen: vi.fn(),
 }));
@@ -124,9 +123,7 @@ describe('useDragDrop', () => {
   });
 
   it('should call addFiles when drop resolves with entries', async () => {
-    const mockEntries: FileEntry[] = [
-      { fileName: 'a.txt', filePath: '/tmp/a.txt', fileSize: 50 },
-    ];
+    const mockEntries: FileEntry[] = [{ fileName: 'a.txt', filePath: '/tmp/a.txt', fileSize: 50 }];
     mockResolveDroppedPaths.mockResolvedValue(mockEntries);
 
     const addFilesSpy = vi.fn();
@@ -182,7 +179,7 @@ describe('useDragDrop', () => {
     await vi.waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith(
         'Failed to resolve dropped paths:',
-        expect.any(Error),
+        expect.any(Error)
       );
     });
 
@@ -210,7 +207,7 @@ describe('useDragDrop', () => {
           addEventListener: vi.fn(),
           removeEventListener: vi.fn(),
           dispatchEvent: vi.fn(),
-        }) as MediaQueryList,
+        }) as MediaQueryList
     );
 
     const { useDragDrop } = await import('@/hooks/useDragDrop');
