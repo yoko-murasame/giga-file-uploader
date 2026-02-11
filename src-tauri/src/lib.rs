@@ -24,6 +24,8 @@ pub fn run() {
             commands::upload::cancel_upload,
             commands::history::get_history,
             commands::history::delete_history,
+            commands::settings::get_settings,
+            commands::settings::save_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

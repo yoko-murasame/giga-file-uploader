@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import { startUpload as startUploadIpc } from '@/lib/tauri';
+import { startUpload as startUploadIpc, getSettings, saveSettings } from '@/lib/tauri';
 
 import type { FileEntry, PendingFile, ProgressPayload, UploadTaskProgress } from '@/types/upload';
 
@@ -8,6 +8,7 @@ interface UploadState {
   pendingFiles: PendingFile[];
   activeTasks: Record<string, UploadTaskProgress>;
   allUploadsComplete: boolean;
+  retentionDays: number;
   addFiles: (entries: FileEntry[]) => void;
   removeFile: (id: string) => void;
   clearFiles: () => void;
@@ -18,12 +19,15 @@ interface UploadState {
   setTaskFileComplete: (taskId: string, downloadUrl: string) => void;
   setAllComplete: () => void;
   clearCompletedTasks: () => void;
+  setRetentionDays: (days: number) => void;
+  loadRetentionPreference: () => Promise<void>;
 }
 
 export const useUploadStore = create<UploadState>((set, get) => ({
   pendingFiles: [],
   activeTasks: {},
   allUploadsComplete: false,
+  retentionDays: 7,
 
   addFiles: (entries) =>
     set((state) => ({
@@ -146,4 +150,20 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   setAllComplete: () => set({ allUploadsComplete: true }),
 
   clearCompletedTasks: () => set({ activeTasks: {}, allUploadsComplete: false }),
+
+  setRetentionDays: (days) => {
+    set({ retentionDays: days });
+    saveSettings({ retentionDays: days }).catch((error) => {
+      console.error('Failed to save retention preference:', error);
+    });
+  },
+
+  loadRetentionPreference: async () => {
+    try {
+      const settings = await getSettings();
+      set({ retentionDays: settings.retentionDays });
+    } catch (error) {
+      console.error('Failed to load retention preference:', error);
+    }
+  },
 }));

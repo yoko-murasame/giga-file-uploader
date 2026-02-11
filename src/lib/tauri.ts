@@ -14,6 +14,7 @@ export { listen } from '@tauri-apps/api/event';
 
 import type { FileEntry } from '@/types/upload';
 import type { HistoryRecord } from '@/types/history';
+import type { AppSettings } from '@/types/settings';
 
 /** Resolve dropped file/directory paths into a flat list of file entries. */
 export async function resolveDroppedPaths(paths: string[]): Promise<FileEntry[]> {
@@ -53,4 +54,14 @@ export async function deleteHistory(id: string): Promise<void> {
 /** Copy text to system clipboard. */
 export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
+}
+
+/** Get application settings. Returns defaults if no settings saved. */
+export async function getSettings(): Promise<AppSettings> {
+  return invoke<AppSettings>('get_settings');
+}
+
+/** Save application settings. */
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  return invoke<void>('save_settings', { settingsData: settings });
 }

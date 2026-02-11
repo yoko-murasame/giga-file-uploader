@@ -7,6 +7,7 @@ pub mod file;
 
 pub mod upload;
 pub mod history;
+pub mod settings;
 
 #[cfg(test)]
 mod tests {

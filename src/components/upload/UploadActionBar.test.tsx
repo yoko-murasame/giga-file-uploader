@@ -7,6 +7,8 @@ import { useUploadStore } from '@/stores/uploadStore';
 
 vi.mock('@/lib/tauri', () => ({
   startUpload: vi.fn(),
+  getSettings: vi.fn(),
+  saveSettings: vi.fn(),
   invoke: vi.fn(),
   listen: vi.fn(),
 }));
@@ -17,6 +19,7 @@ describe('UploadActionBar', () => {
       pendingFiles: [],
       activeTasks: {},
       allUploadsComplete: false,
+      retentionDays: 7,
     });
   });
 
@@ -81,7 +84,7 @@ describe('UploadActionBar', () => {
       () =>
         new Promise<void>((resolve) => {
           resolveUpload = resolve;
-        }),
+        })
     );
     useUploadStore.setState({
       pendingFiles: [

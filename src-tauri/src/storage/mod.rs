@@ -5,7 +5,7 @@
 //! safety (NFR11).
 
 pub mod history;
-// TODO: Story 5.1 - pub mod settings; (get/save settings)
+pub mod settings;
 
 #[cfg(test)]
 mod tests {

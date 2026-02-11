@@ -8,7 +8,7 @@ pub mod files;
 
 pub mod upload;
 pub mod history;
-// TODO: Story 5.1 - pub mod settings; (get_settings, save_settings)
+pub mod settings;
 
 #[cfg(test)]
 mod tests {

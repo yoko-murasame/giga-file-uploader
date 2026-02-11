@@ -7,6 +7,8 @@ import type { FileEntry, ProgressPayload } from '@/types/upload';
 // Mock the tauri IPC module
 vi.mock('@/lib/tauri', () => ({
   startUpload: vi.fn(),
+  getSettings: vi.fn().mockResolvedValue({ retentionDays: 7 }),
+  saveSettings: vi.fn().mockResolvedValue(undefined),
   invoke: vi.fn(),
   listen: vi.fn(),
 }));

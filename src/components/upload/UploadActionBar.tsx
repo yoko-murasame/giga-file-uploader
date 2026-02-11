@@ -2,11 +2,13 @@ import { useState } from 'react';
 
 import { useUploadStore } from '@/stores/uploadStore';
 import { formatFileSize } from '@/lib/format';
+import RetentionSelector from '@/components/upload/RetentionSelector';
 
 function UploadActionBar() {
   const pendingFiles = useUploadStore((s) => s.pendingFiles);
   const activeTasks = useUploadStore((s) => s.activeTasks);
   const allUploadsComplete = useUploadStore((s) => s.allUploadsComplete);
+  const retentionDays = useUploadStore((s) => s.retentionDays);
   const startUpload = useUploadStore((s) => s.startUpload);
   const clearCompletedTasks = useUploadStore((s) => s.clearCompletedTasks);
 
@@ -39,7 +41,7 @@ function UploadActionBar() {
   const handleStartUpload = async () => {
     setIsStarting(true);
     try {
-      await startUpload(7);
+      await startUpload(retentionDays);
     } finally {
       setIsStarting(false);
     }
@@ -71,15 +73,18 @@ function UploadActionBar() {
             清空列表
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={handleStartUpload}
-            disabled={isStartDisabled}
-            aria-disabled={isStartDisabled}
-            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            开始上传
-          </button>
+          <div className="flex items-center gap-3">
+            <RetentionSelector disabled={isUploading} />
+            <button
+              type="button"
+              onClick={handleStartUpload}
+              disabled={isStartDisabled}
+              aria-disabled={isStartDisabled}
+              className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              开始上传
+            </button>
+          </div>
         )}
       </div>
     </nav>

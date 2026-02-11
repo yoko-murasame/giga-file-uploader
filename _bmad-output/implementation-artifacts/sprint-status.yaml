@@ -64,13 +64,13 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: 历史记录与链接管理
-  epic-4: in-progress
+  epic-4: done
   4-1-upload-history-persistent-storage: done
-  4-2-history-list-display-and-link-management: review
+  4-2-history-list-display-and-link-management: done
   epic-4-retrospective: optional
 
   # Epic 5: 上传配置与离线体验
-  epic-5: backlog
-  5-1-file-retention-period-selection: backlog
+  epic-5: in-progress
+  5-1-file-retention-period-selection: review
   5-2-offline-mode-and-network-status-awareness: backlog
   epic-5-retrospective: optional
