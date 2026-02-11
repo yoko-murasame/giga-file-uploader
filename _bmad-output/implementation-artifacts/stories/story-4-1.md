@@ -753,3 +753,109 @@ Story 4.2 将在"历史记录" Tab 中构建 UI，使用本 Story 提供的：
 - [ ] `cargo clippy --manifest-path src-tauri/Cargo.toml` 无 lint 警告
 - [ ] `pnpm test` 前端测试通过
 - [ ] `pnpm lint` ESLint 无错误
+
+---
+
+## Review Feedback (Round 1)
+
+**Reviewer:** Story Reviewer (C3)
+**Verdict:** NEEDS_IMPROVE
+**Date:** 2026-02-11
+
+### Checklist Results
+
+| # | Item | Result | Feedback |
+|---|------|--------|----------|
+| RC-1 | AC clarity | PASS | All ACs use Given/When/Then format, specific and testable |
+| RC-2 | Task sequence | PASS | Dependencies correct, no circular deps, execution order valid |
+| RC-3 | Technical feasibility | **FAIL** | `download_url` use-after-move compile error in proposed upload_engine.rs integration code (see Issue 1) |
+| RC-4 | Requirement consistency | **FAIL** | AC-1/AC-3 save-after-emit ordering contradicts NFR11 crash safety goal (see Issue 2) |
+| RC-5 | Scope sizing | PASS | Reasonable scope for single sprint cycle |
+| RC-6 | Dependency documentation | PASS | Story 3-6/3-7 dependencies and 4-2/5-1 downstream correctly documented |
+| RC-7 | File scope declaration | PASS | New/modified/forbidden file lists complete and accurate |
+| RC-8 | API/method existence | PASS (with warnings) | All codebase references verified; 2 warnings on external API naming (see Warnings) |
+
+### Issue 1 (RC-3 FAIL): `download_url` use-after-move in upload_engine.rs
+
+**Location:** Technical Design section 4 / AC-1 / Task 5
+
+In `upload_engine.rs:207-216`, the existing code is:
+```rust
+let download_url = task.shards[0].download_url.clone().unwrap_or_default(); // String
+let _ = app.emit("upload:file-complete", FileCompletePayload {
+    task_id,           // task_id: String — MOVED
+    file_name: task.file_name.clone(),
+    download_url,      // download_url: String — MOVED
+    file_size: task.file_size,
+});
+```
+
+After the emit, `download_url` is **moved** into `FileCompletePayload` and no longer available. The story's proposed code then uses `download_url.clone()` to build `HistoryRecord` — this will not compile.
+
+**Fix:** Move the history record construction and save **BEFORE** the `app.emit()` call. This simultaneously fixes Issue 2 (crash safety ordering). The `download_url` variable is still available before the emit. The proposed code should become:
+
+```rust
+let download_url = task.shards[0].download_url.clone().unwrap_or_default();
+
+// Save history record BEFORE emit (NFR11: crash-safe persistence)
+let now = chrono::Utc::now();
+let history_record = crate::models::history::HistoryRecord {
+    id: uuid::Uuid::new_v4().simple().to_string(),
+    file_name: task.file_name.clone(),
+    download_url: download_url.clone(),
+    file_size: task.file_size,
+    uploaded_at: now.to_rfc3339(),
+    expires_at: (now + chrono::Duration::days(config.lifetime as i64)).to_rfc3339(),
+};
+if let Err(e) = crate::storage::history::add_record(&app, history_record) {
+    log::error!("Failed to save history record for '{}': {}", task.file_name, e);
+}
+
+// Emit event to frontend (download_url moves here)
+let _ = app.emit("upload:file-complete", FileCompletePayload {
+    task_id,
+    file_name: task.file_name.clone(),
+    download_url,
+    file_size: task.file_size,
+});
+
+Ok(())
+```
+
+### Issue 2 (RC-4 FAIL): NFR11 save ordering contradiction
+
+**Location:** AC-1, AC-3, Technical Design section 4
+
+AC-1 states: "保存操作在 `upload:file-complete` 事件发射之后". AC-3 restates the same ordering. The design rationale claims this provides crash safety (NFR11).
+
+**Contradiction:** Saving AFTER emit leaves a crash window between emit and save where the record would be lost. If the app crashes after emitting the event but before `add_record()` completes, the history record is permanently lost. Saving BEFORE emit eliminates this window entirely — the `upload:file-complete` event is merely a UI notification; if it is lost due to crash, the frontend will pick up the record on the next `loadHistory()` call when the app restarts.
+
+**Fix:** Update AC-1 and AC-3 to state save happens BEFORE emit. Change: "位于 `upload:file-complete` 事件发射之后" → "位于 `upload:file-complete` 事件发射之前". Update the data flow diagram accordingly. This also resolves Issue 1.
+
+### Warnings (RC-8)
+
+1. **`chrono::Duration::days()` deprecation:** In chrono 0.4.35+, `Duration::days()` is deprecated in favor of `chrono::TimeDelta::days()`. If the project picks up chrono >= 0.4.35, `cargo clippy` will emit deprecation warnings. Consider using `chrono::TimeDelta::days(config.lifetime as i64)` instead, or pin chrono version to `"0.4"` and accept the warning risk. Non-blocking.
+
+2. **`Store<tauri::Wry>` type parameter in `load_records`:** The `load_records` helper signature uses `Store<tauri::Wry>`. In tauri-plugin-store v2, the generic parameter may be `Store<R: Runtime>` rather than hard-coded `Wry`. Dev runner should verify the actual type returned by `app.store()` and adjust accordingly. Non-blocking.
+
+### API Verifications
+
+| Reference | Location | Codebase File | Result |
+|-----------|----------|---------------|--------|
+| `upload:file-complete` emit | AC-1 | `upload_engine.rs:208-216` | Confirmed |
+| `download_url` variable | Task 5 | `upload_engine.rs:207` | Confirmed (but moved at :213) |
+| `AppError::Storage(String)` | AC-4 | `error.rs:18` | Confirmed |
+| `models/mod.rs` TODO | Task 2 | `models/mod.rs:9` | Confirmed |
+| `storage/mod.rs` TODO | Task 3 | `storage/mod.rs:7` | Confirmed |
+| `commands/mod.rs` TODO | Task 4 | `commands/mod.rs:10` | Confirmed |
+| `tauri-plugin-store` registered | AC-2 | `lib.rs:15` | Confirmed |
+| `tauri-plugin-store` in Cargo.toml | AC-2 | `Cargo.toml:18` | Confirmed |
+| `invoke_handler` location | Task 4 | `lib.rs:21-25` | Confirmed |
+| `historyStore.ts` placeholder | AC-8 | `historyStore.ts:1-11` | Confirmed |
+| `lib/tauri.ts` structure | AC-7 | `tauri.ts:1-46` | Confirmed |
+| `setTaskFileComplete` action | cross-ref | `uploadStore.ts:18,129` | Confirmed |
+| `FileCompletePayload` interface | cross-ref | `types/upload.ts:61-66` | Confirmed |
+| `chrono` NOT in Cargo.toml | Task 1 | `Cargo.toml:15-26` | Confirmed (needs adding) |
+| `uuid` in Cargo.toml | Task 5 | `Cargo.toml:24` | Confirmed |
+| `chrono::Duration::days()` | Task 5 | external crate | Warning: possibly deprecated |
+| `Store<tauri::Wry>` | AC-4 | external crate | Warning: verify type param |
