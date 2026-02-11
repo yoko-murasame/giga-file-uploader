@@ -8,14 +8,16 @@ import { useDragDrop } from '@/hooks/useDragDrop';
 
 interface FileDropZoneProps {
   collapsed?: boolean;
+  disabled?: boolean;
 }
 
-function FileDropZone({ collapsed = false }: FileDropZoneProps) {
-  const { isDragOver, prefersReducedMotion } = useDragDrop();
+function FileDropZone({ collapsed = false, disabled = false }: FileDropZoneProps) {
+  const { isDragOver, prefersReducedMotion } = useDragDrop({ disabled });
   const addFiles = useUploadStore((s) => s.addFiles);
   const isPickerOpenRef = useRef(false);
 
   const handleClick = useCallback(async () => {
+    if (disabled) return;
     if (isPickerOpenRef.current) return;
     isPickerOpenRef.current = true;
     try {
@@ -31,16 +33,17 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
     } finally {
       isPickerOpenRef.current = false;
     }
-  }, [addFiles]);
+  }, [addFiles, disabled]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (disabled) return;
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         handleClick();
       }
     },
-    [handleClick]
+    [disabled, handleClick]
   );
 
   const transitionClass = !prefersReducedMotion ? 'transition-all duration-200' : '';
@@ -50,10 +53,11 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
       <div
         role="button"
         aria-label="添加文件"
-        tabIndex={0}
+        aria-disabled={disabled || undefined}
+        tabIndex={disabled ? -1 : 0}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        className={`flex h-12 cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] hover:border-brand ${transitionClass} ${
+        className={`flex h-12 items-center justify-center rounded-lg border border-dashed border-[#D1D5DB] bg-[#F9FAFB] ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-brand'} ${transitionClass} ${
           isDragOver ? 'border-solid border-brand bg-brand/20' : ''
         } focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:outline-none`}
       >
@@ -68,10 +72,11 @@ function FileDropZone({ collapsed = false }: FileDropZoneProps) {
     <div
       role="button"
       aria-label="添加文件"
-      tabIndex={0}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : 0}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
-      className={`flex min-h-[320px] flex-1 cursor-pointer flex-col items-center justify-center rounded-lg ${transitionClass} ${
+      className={`flex min-h-[320px] flex-1 flex-col items-center justify-center rounded-lg ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${transitionClass} ${
         isDragOver
           ? 'border-2 border-solid border-brand bg-brand/20'
           : 'border-2 border-dashed border-[#D1D5DB] bg-[#F9FAFB]'

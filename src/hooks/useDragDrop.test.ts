@@ -194,6 +194,28 @@ describe('useDragDrop', () => {
     expect(result.current.prefersReducedMotion).toBe(false);
   });
 
+  it('should not call addFiles when disabled is true on drop', async () => {
+    const mockEntries: FileEntry[] = [{ fileName: 'a.txt', filePath: '/tmp/a.txt', fileSize: 50 }];
+    mockResolveDroppedPaths.mockResolvedValue(mockEntries);
+
+    const addFilesSpy = vi.fn();
+    useUploadStore.setState({ addFiles: addFilesSpy } as never);
+
+    const { useDragDrop } = await import('@/hooks/useDragDrop');
+    renderHook(() => useDragDrop({ disabled: true }));
+
+    await vi.waitFor(() => {
+      expect(dragDropHandler).not.toBeNull();
+    });
+
+    await act(async () => {
+      dragDropHandler!({ payload: { type: 'drop', paths: ['/tmp/a.txt'] } });
+    });
+
+    expect(mockResolveDroppedPaths).not.toHaveBeenCalled();
+    expect(addFilesSpy).not.toHaveBeenCalled();
+  });
+
   it('should report prefersReducedMotion as true when media query matches', async () => {
     // Override matchMedia to return matches: true
     const matchMediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation(

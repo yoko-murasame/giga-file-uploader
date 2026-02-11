@@ -248,4 +248,81 @@ describe('FileDropZone', () => {
       expect(addFilesSpy).toHaveBeenCalledWith(mockEntries);
     });
   });
+
+  describe('disabled state', () => {
+    it('should not call openFilePicker on click when disabled', async () => {
+      const user = userEvent.setup();
+      render(<FileDropZone disabled />);
+
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).not.toHaveBeenCalled();
+    });
+
+    it('should not call openFilePicker on Enter key when disabled', async () => {
+      const user = userEvent.setup();
+      render(<FileDropZone disabled />);
+
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      dropZone.focus();
+      await user.keyboard('{Enter}');
+
+      expect(mockOpenFilePicker).not.toHaveBeenCalled();
+    });
+
+    it('should have aria-disabled="true" when disabled', () => {
+      render(<FileDropZone disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('should have tabIndex=-1 when disabled', () => {
+      render(<FileDropZone disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('should have opacity-50 and cursor-not-allowed classes when disabled', () => {
+      render(<FileDropZone disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone.className).toContain('opacity-50');
+      expect(dropZone.className).toContain('cursor-not-allowed');
+    });
+
+    it('should not have aria-disabled when not disabled', () => {
+      render(<FileDropZone />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone).not.toHaveAttribute('aria-disabled');
+    });
+
+    it('should not call openFilePicker on click when disabled in collapsed mode', async () => {
+      const user = userEvent.setup();
+      render(<FileDropZone collapsed disabled />);
+
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      await user.click(dropZone);
+
+      expect(mockOpenFilePicker).not.toHaveBeenCalled();
+    });
+
+    it('should have aria-disabled="true" when disabled in collapsed mode', () => {
+      render(<FileDropZone collapsed disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('should have tabIndex=-1 when disabled in collapsed mode', () => {
+      render(<FileDropZone collapsed disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('should have opacity-50 and cursor-not-allowed in collapsed disabled mode', () => {
+      render(<FileDropZone collapsed disabled />);
+      const dropZone = screen.getByRole('button', { name: '添加文件' });
+      expect(dropZone.className).toContain('opacity-50');
+      expect(dropZone.className).toContain('cursor-not-allowed');
+    });
+  });
 });

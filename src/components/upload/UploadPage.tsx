@@ -7,6 +7,9 @@ import { useUploadStore } from '@/stores/uploadStore';
 function UploadPage() {
   const pendingFiles = useUploadStore((s) => s.pendingFiles);
   const hasActiveTasks = useUploadStore((s) => Object.keys(s.activeTasks).length > 0);
+  const isUploading = useUploadStore((s) =>
+    Object.values(s.activeTasks).some((t) => t.status === 'uploading')
+  );
   const removeFile = useUploadStore((s) => s.removeFile);
   const hasFiles = pendingFiles.length > 0 || hasActiveTasks;
 
@@ -14,7 +17,7 @@ function UploadPage() {
 
   return (
     <div className="flex h-full flex-col gap-2 p-4">
-      <FileDropZone collapsed={hasFiles} />
+      <FileDropZone collapsed={hasFiles} disabled={isUploading} />
       {hasFiles && <UploadFileList files={pendingFiles} onRemoveFile={removeFile} />}
       <UploadActionBar />
     </div>

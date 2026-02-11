@@ -20,7 +20,8 @@ function subscribeReducedMotion(callback: () => void) {
 }
 
 /** Hook for managing Tauri native drag-and-drop file events. */
-export function useDragDrop() {
+export function useDragDrop(options?: { disabled?: boolean }) {
+  const disabled = options?.disabled ?? false;
   const [isDragOver, setIsDragOver] = useState(false);
   const prefersReducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
@@ -31,6 +32,7 @@ export function useDragDrop() {
 
   const handleDrop = useCallback(
     async (paths: string[]) => {
+      if (disabled) return;
       if (paths.length === 0) return;
       try {
         const entries = await resolveDroppedPaths(paths);
@@ -41,7 +43,7 @@ export function useDragDrop() {
         console.error('Failed to resolve dropped paths:', error);
       }
     },
-    [addFiles]
+    [addFiles, disabled]
   );
 
   useEffect(() => {
