@@ -145,7 +145,7 @@ impl ProgressAggregator {
                         shard_payloads.push(ShardProgressPayload {
                             shard_index: shard.shard_index,
                             progress,
-                            status: shard_status_to_string(&status),
+                            status: shard_status_to_str(&status).to_string(),
                         });
                     }
 
@@ -169,12 +169,12 @@ impl ProgressAggregator {
     }
 }
 
-fn shard_status_to_string(status: &ShardStatus) -> String {
+fn shard_status_to_str(status: &ShardStatus) -> &'static str {
     match status {
-        ShardStatus::Pending => "pending".to_string(),
-        ShardStatus::Uploading => "uploading".to_string(),
-        ShardStatus::Completed => "completed".to_string(),
-        ShardStatus::Error => "error".to_string(),
+        ShardStatus::Pending => "pending",
+        ShardStatus::Uploading => "uploading",
+        ShardStatus::Completed => "completed",
+        ShardStatus::Error => "error",
     }
 }
 
@@ -183,23 +183,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_shard_status_to_string_pending() {
-        assert_eq!(shard_status_to_string(&ShardStatus::Pending), "pending");
+    fn test_shard_status_to_str_pending() {
+        assert_eq!(shard_status_to_str(&ShardStatus::Pending), "pending");
     }
 
     #[test]
-    fn test_shard_status_to_string_uploading() {
-        assert_eq!(shard_status_to_string(&ShardStatus::Uploading), "uploading");
+    fn test_shard_status_to_str_uploading() {
+        assert_eq!(shard_status_to_str(&ShardStatus::Uploading), "uploading");
     }
 
     #[test]
-    fn test_shard_status_to_string_completed() {
-        assert_eq!(shard_status_to_string(&ShardStatus::Completed), "completed");
+    fn test_shard_status_to_str_completed() {
+        assert_eq!(shard_status_to_str(&ShardStatus::Completed), "completed");
     }
 
     #[test]
-    fn test_shard_status_to_string_error() {
-        assert_eq!(shard_status_to_string(&ShardStatus::Error), "error");
+    fn test_shard_status_to_str_error() {
+        assert_eq!(shard_status_to_str(&ShardStatus::Error), "error");
     }
 
     #[test]

@@ -27,6 +27,8 @@ export interface ShardProgress {
 /** Active upload task progress state */
 export interface UploadTaskProgress {
   taskId: string;
+  fileName: string;
+  fileSize: number;
   fileProgress: number;
   shards: ShardProgress[];
   status: 'uploading' | 'completed' | 'error';

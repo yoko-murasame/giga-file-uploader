@@ -4,15 +4,14 @@ import { ChevronDown, ChevronRight, File, X } from 'lucide-react';
 import { Progress, Tooltip } from 'radix-ui';
 
 import { formatFileSize } from '@/lib/format';
-
-import type { UploadTaskProgress } from '@/types/upload';
+import { useUploadStore } from '@/stores/uploadStore';
 
 interface UploadFileItemProps {
   id: string;
-  fileName: string;
-  fileSize: number;
+  fileName?: string;
+  fileSize?: number;
   onRemove: (id: string) => void;
-  taskProgress?: UploadTaskProgress;
+  taskId?: string;
 }
 
 function statusLabel(status: 'uploading' | 'completed' | 'error' | undefined): string {
@@ -43,11 +42,12 @@ function shardStatusLabel(status: 'pending' | 'uploading' | 'completed' | 'error
 
 function UploadFileItemInner({
   id,
-  fileName,
-  fileSize,
+  fileName: fileNameProp,
+  fileSize: fileSizeProp,
   onRemove,
-  taskProgress,
+  taskId,
 }: UploadFileItemProps) {
+  const taskProgress = useUploadStore((s) => (taskId ? s.activeTasks[taskId] : undefined));
   const [isRemoving, setIsRemoving] = useState(false);
   const [shardsExpanded, setShardsExpanded] = useState(true);
 
@@ -64,6 +64,8 @@ function UploadFileItemInner({
   }, [id, onRemove, prefersReducedMotion]);
 
   const isUploading = !!taskProgress;
+  const fileName = taskProgress?.fileName ?? fileNameProp ?? '';
+  const fileSize = taskProgress?.fileSize ?? fileSizeProp ?? 0;
   const hasMultipleShards = taskProgress && taskProgress.shards.length > 1;
 
   return (

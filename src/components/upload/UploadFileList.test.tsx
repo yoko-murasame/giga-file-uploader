@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import UploadFileList from '@/components/upload/UploadFileList';
+import { useUploadStore } from '@/stores/uploadStore';
 
 import type { PendingFile } from '@/types/upload';
+
+vi.mock('@/lib/tauri', () => ({
+  startUpload: vi.fn(),
+  invoke: vi.fn(),
+  listen: vi.fn(),
+}));
 
 const mockFiles: PendingFile[] = [
   {
@@ -30,6 +37,10 @@ const mockFiles: PendingFile[] = [
 ];
 
 describe('UploadFileList', () => {
+  beforeEach(() => {
+    useUploadStore.setState({ pendingFiles: [], activeTasks: {} });
+  });
+
   it('should render a ul element', () => {
     render(<UploadFileList files={mockFiles} onRemoveFile={vi.fn()} />);
 

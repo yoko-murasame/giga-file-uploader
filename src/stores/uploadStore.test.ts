@@ -123,6 +123,8 @@ describe('uploadStore', () => {
         activeTasks: {
           'task-1': {
             taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
             fileProgress: 0,
             shards: [],
             status: 'uploading',
@@ -163,12 +165,16 @@ describe('uploadStore', () => {
         activeTasks: {
           'task-1': {
             taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
             fileProgress: 10,
             shards: [],
             status: 'uploading',
           },
           'task-2': {
             taskId: 'task-2',
+            fileName: 'b.txt',
+            fileSize: 200,
             fileProgress: 20,
             shards: [],
             status: 'uploading',
@@ -195,6 +201,8 @@ describe('uploadStore', () => {
         activeTasks: {
           'task-1': {
             taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
             fileProgress: 30,
             shards: [],
             status: 'uploading',
@@ -221,6 +229,8 @@ describe('uploadStore', () => {
         activeTasks: {
           'task-1': {
             taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
             fileProgress: 95,
             shards: [],
             status: 'uploading',

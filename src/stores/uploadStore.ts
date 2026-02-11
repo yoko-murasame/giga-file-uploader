@@ -53,12 +53,21 @@ export const useUploadStore = create<UploadState>((set, get) => ({
       fileSize: f.fileSize,
     }));
 
-    const taskIds = await startUploadIpc(files, { lifetime });
+    let taskIds: string[];
+    try {
+      taskIds = await startUploadIpc(files, { lifetime });
+    } catch (error) {
+      console.error('Failed to start upload:', error);
+      return;
+    }
 
     const newActiveTasks: Record<string, UploadTaskProgress> = {};
-    for (const taskId of taskIds) {
+    for (let i = 0; i < taskIds.length; i++) {
+      const taskId = taskIds[i];
       newActiveTasks[taskId] = {
         taskId,
+        fileName: files[i].fileName,
+        fileSize: files[i].fileSize,
         fileProgress: 0,
         shards: [],
         status: 'uploading',
