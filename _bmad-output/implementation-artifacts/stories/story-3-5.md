@@ -1046,3 +1046,47 @@ const taskProgress = useUploadStore(
 - [ ] `cargo clippy` 无警告
 - [ ] `cargo test` 所有测试通过
 - [ ] `pnpm test` 前端测试通过
+
+---
+
+## Review Feedback
+
+### Review Round 1 — 2026-02-11
+
+**Reviewer:** Story Reviewer (BMM PM persona)
+**Verdict:** PASSED
+
+#### Checklist Results
+
+| # | Item | Result | Notes |
+|---|------|--------|-------|
+| RC-1 | AC clarity | PASS | 9 ACs, all specific/measurable/testable with code structures and method signatures |
+| RC-2 | Task sequence | PASS | 10 tasks, clear DAG, no circular dependencies, backend/frontend tracks parallelizable |
+| RC-3 | Technical feasibility | PASS | All integration points verified against codebase (see details below) |
+| RC-4 | Requirement consistency | PASS | Minor: AC-6 mentions `setRetryWarning()` but AC-5 store interface omits it; AC-6 marks "(optional)" — internally consistent |
+| RC-5 | Scope sizing | PASS | Large full-stack feature (2 new + 11 modified files), well-decomposed into 10 atomic tasks |
+| RC-6 | Dependency documentation | PASS | Story 3-3/3-4 prerequisites identified (both completed); Story 3.6 downstream documented |
+| RC-7 | File scope declaration | PASS | 2 new, 11 modified, 14 prohibited files — all paths verified against codebase |
+| RC-8 | API/method existence | PASS | All technical references verified (see details below) |
+
+#### RC-3 Technical Feasibility Details
+
+- `services/mod.rs:11` — TODO placeholder `// TODO: Story 3.5 - pub mod progress;` confirmed
+- `upload_engine.rs` — `start()` (line 24), `upload_file()` (line 100), `upload_shard()` (line 164) signatures match Story claims
+- `UploadState` (commands/upload.rs:15) — currently `Default` with `cancel_flags` only; `new(AppHandle)` migration viable
+- `lib.rs:14` — `.manage(UploadState::default())` confirmed; `.setup()` migration path correct
+- `Shard` (models/upload.rs:64) — `shard_index: u32`, `size: u64` fields confirmed
+- `ShardStatus` (models/upload.rs:31) — all 4 variants (Pending/Uploading/Completed/Error) confirmed
+- NFR2 gap documented: Story updates progress per chunk (100MB), not per 128KB. Story explicitly addresses this in Technical Notes with rationale (requires `api/v1.rs` modification in prohibited file list). Acceptable scope decision.
+
+#### RC-8 API/Method Verification
+
+- `crate::models::upload::{Shard, ShardStatus}` — confirmed in models/upload.rs
+- `tauri::Emitter` — already imported in upload_engine.rs:8
+- `chunk_manager::plan_chunks()` — called in upload_engine.rs:39
+- `listen` — exported from lib/tauri.ts:13
+- `import { Progress } from 'radix-ui'` — consistent with existing `import { Tooltip } from 'radix-ui'` pattern
+- `import { Tooltip } from 'radix-ui'` — used in UploadFileItem.tsx:4 and UploadFileList.tsx:1
+- `formatFileSize` from `@/lib/format` — imported in UploadFileItem.tsx:6
+- `useUploadStore.getState()` — standard Zustand v5 API
+- `reqwest::cookie::Jar` — already used in upload_engine.rs:175
