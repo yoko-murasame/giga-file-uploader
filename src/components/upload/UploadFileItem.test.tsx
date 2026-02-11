@@ -296,4 +296,68 @@ describe('UploadFileItem', () => {
       expect(screen.getByText('出错')).toBeInTheDocument();
     });
   });
+
+  describe('completed state UI', () => {
+    it('should show CheckCircle2 icon and download link with CopyButton when completed', () => {
+      useUploadStore.setState({
+        activeTasks: {
+          'task-complete': {
+            taskId: 'task-complete',
+            fileName: 'finished.zip',
+            fileSize: 2048,
+            fileProgress: 100,
+            shards: [{ shardIndex: 0, progress: 100, status: 'completed' }],
+            status: 'completed',
+            downloadUrl: 'https://46.gigafile.nu/abc123',
+          },
+        },
+      });
+
+      render(
+        <UploadFileItem id="task-complete" taskId="task-complete" onRemove={() => {}} />,
+        { wrapper: Wrapper }
+      );
+
+      // CheckCircle2 icon is rendered (no percentage shown)
+      expect(screen.queryByText('100%')).not.toBeInTheDocument();
+      // Download link is present
+      const link = screen.getByRole('link');
+      expect(link).toHaveAttribute('href', 'https://46.gigafile.nu/abc123');
+      expect(link).toHaveAttribute('target', '_blank');
+      // CopyButton is present
+      expect(screen.getByRole('button', { name: '复制链接' })).toBeInTheDocument();
+      // Delete button is hidden during upload state
+      expect(screen.queryByRole('button', { name: /删除/ })).not.toBeInTheDocument();
+    });
+
+    it('should hide shard details for completed multi-shard task', () => {
+      useUploadStore.setState({
+        activeTasks: {
+          'task-multi-done': {
+            taskId: 'task-multi-done',
+            fileName: 'big-archive.zip',
+            fileSize: 3221225472,
+            fileProgress: 100,
+            shards: [
+              { shardIndex: 0, progress: 100, status: 'completed' },
+              { shardIndex: 1, progress: 100, status: 'completed' },
+              { shardIndex: 2, progress: 100, status: 'completed' },
+            ],
+            status: 'completed',
+            downloadUrl: 'https://46.gigafile.nu/xyz789',
+          },
+        },
+      });
+
+      render(
+        <UploadFileItem id="task-multi-done" taskId="task-multi-done" onRemove={() => {}} />,
+        { wrapper: Wrapper }
+      );
+
+      // Shard details button should NOT be visible for completed tasks
+      expect(screen.queryByText(/分片详情/)).not.toBeInTheDocument();
+      // But download link should be visible
+      expect(screen.getByRole('link')).toHaveAttribute('href', 'https://46.gigafile.nu/xyz789');
+    });
+  });
 });

@@ -4,7 +4,12 @@ import { renderHook } from '@testing-library/react';
 import { useUploadEvents } from '@/hooks/useUploadEvents';
 import { useUploadStore } from '@/stores/uploadStore';
 
-import type { ProgressPayload, UploadErrorPayload } from '@/types/upload';
+import type {
+  AllCompletePayload,
+  FileCompletePayload,
+  ProgressPayload,
+  UploadErrorPayload,
+} from '@/types/upload';
 
 type EventCallback<T> = (event: { payload: T }) => void;
 
@@ -26,7 +31,7 @@ describe('useUploadEvents', () => {
   beforeEach(() => {
     mockListeners.clear();
     mockUnlisteners.length = 0;
-    useUploadStore.setState({ pendingFiles: [], activeTasks: {} });
+    useUploadStore.setState({ pendingFiles: [], activeTasks: {}, allUploadsComplete: false });
   });
 
   it('should subscribe to upload:progress and upload:error events on mount', async () => {
@@ -119,5 +124,56 @@ describe('useUploadEvents', () => {
 
     const task = useUploadStore.getState().activeTasks['task-1'];
     expect(task.status).toBe('error');
+  });
+
+  it('should call setTaskFileComplete when file-complete event is received', async () => {
+    useUploadStore.setState({
+      activeTasks: {
+        'task-1': {
+          taskId: 'task-1',
+          fileName: 'test.bin',
+          fileSize: 1000,
+          fileProgress: 90,
+          shards: [],
+          status: 'uploading',
+        },
+      },
+    });
+
+    renderHook(() => useUploadEvents());
+
+    await vi.waitFor(() => {
+      expect(mockListeners.has('upload:file-complete')).toBe(true);
+    });
+
+    const fileCompleteCallback = mockListeners.get('upload:file-complete') as EventCallback<FileCompletePayload>;
+    fileCompleteCallback({
+      payload: {
+        taskId: 'task-1',
+        fileName: 'test.bin',
+        downloadUrl: 'https://46.gigafile.nu/abc123',
+        fileSize: 1000,
+      },
+    });
+
+    const task = useUploadStore.getState().activeTasks['task-1'];
+    expect(task.status).toBe('completed');
+    expect(task.fileProgress).toBe(100);
+    expect(task.downloadUrl).toBe('https://46.gigafile.nu/abc123');
+  });
+
+  it('should call setAllComplete when all-complete event is received', async () => {
+    renderHook(() => useUploadEvents());
+
+    await vi.waitFor(() => {
+      expect(mockListeners.has('upload:all-complete')).toBe(true);
+    });
+
+    const allCompleteCallback = mockListeners.get('upload:all-complete') as EventCallback<AllCompletePayload>;
+    allCompleteCallback({
+      payload: {},
+    });
+
+    expect(useUploadStore.getState().allUploadsComplete).toBe(true);
   });
 });
