@@ -8,7 +8,7 @@ type: core
 version: 1.0.0
 created: 2026-02-11
 updated: 2026-02-11
-status: draft
+status: Completed
 ---
 
 # Slave Orchestration Workflow (SO)
@@ -362,8 +362,18 @@ return:
    report: { ... }               # Step 7 生成的 batch_report
    ```
 2. 等待 Master 的 shutdown 确认
-3. 收到 shutdown 后清理 Slave Agent 上下文
-4. Agent 退出
+3. Git commit sprint-status.yaml (P34 Git Status Gate):
+   - Call U3 precise-git-commit (commit mode):
+     mode: "commit"
+     files: ["{confirmed_status_path}"]
+     commit_type: "status_update"
+     story_keys: [batch 中所有已处理的 story_keys]
+     batch_id: "{batch_id}"
+     session_id: "{session_id}"
+   - If no changes to sprint-status.yaml: skip commit (U3 handles internally)
+   - If commit fails: log warning, continue (P2 degrade over error)
+4. 收到 shutdown 后清理 Slave Agent 上下文
+5. Agent 退出
 
 **On Success:** Slave Agent 正常退出
 **On Timeout:** 如果 Master 长时间不响应，自动退出（安全超时: 300s）
@@ -450,6 +460,7 @@ Master                    Sprint Slave (SO)            Temp Agent (C4/C5/...)
 | 28 | Git squash per Story | Step 5: 可选的 per-Story commit 压缩，冲突时降级保留原始 commits |
 | 51 | Unified Agent Dispatch | Step 3: Slave 发 AGENT_DISPATCH_REQUEST 含完整参数，Master 一次性创建含上下文的 Agent |
 | 53 | Slave Strict Permission Boundary | 全流程: Slave 仅执行 ALLOWED 清单内的编排操作，严禁直接创建 Story、执行开发/测试/审查、调用 MCP 工具等越权行为。遇到未知状态标记 `needs-intervention` 并跳过 |
+| 34 | sprint-status.yaml Git commit | Step 8: Slave 在 batch 完成时通过 U3 precise-git-commit 提交 sprint-status.yaml 状态变更到 Git，每 batch 一次提交 |
 
 ---
 

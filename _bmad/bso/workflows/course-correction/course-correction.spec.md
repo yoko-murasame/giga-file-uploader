@@ -1,7 +1,7 @@
 ---
 name: course-correction
 module: bso
-status: draft
+status: Completed
 version: 1.0.0
 created: 2026-02-11
 last_validated: 2026-02-11

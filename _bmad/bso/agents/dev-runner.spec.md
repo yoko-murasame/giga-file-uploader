@@ -203,6 +203,31 @@ config_overrides:
 
 ---
 
+## Shutdown Protocol
+
+As a temporary agent, the completion and destruction sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. **Dev mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) for all implementation and test file changes
+3. **Fix mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) only if fix-snapshot comparison passed (post_fix_count >= snapshot_count); if regression detected, rollback changes first then commit rollback state
+4. Compose return value with final status (including mode-specific fields: tasks_completed for dev, fix_snapshot for fix)
+5. Send AGENT_COMPLETE to {report_to} (Slave) via SendMessage
+6. Send AGENT_DESTROY_REQUEST to Master via SendMessage:
+   SendMessage:
+     type: "message"
+     recipient: "{master_name}"
+     content: |
+       AGENT_DESTROY_REQUEST:
+         agent_name: "{self_name}"
+         story_key: "{story_key}"
+         session_id: "{session_id}"
+     summary: "{self_name} requests destruction"
+7. Wait for shutdown_request from Master (expected within agent_shutdown_timeout)
+8. Send shutdown_response: approve
+9. Process terminates
+
+---
+
 ## Return Value Schema
 
 ```yaml

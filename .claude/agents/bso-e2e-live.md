@@ -7,7 +7,7 @@ icon: "E2E"
 module: bso
 hasSidecar: false
 default_persona: null
-status: Draft
+status: Completed
 ---
 
 # BSO E2E Live Agent

@@ -41,12 +41,18 @@ Headless — no direct user interaction. Code and test output written to project
 
 ## Result Delivery Protocol
 
-通过以下方式传递结果给 Orchestrator：
+通过以下方式传递结果给 Orchestrator，完成后请求 Master 销毁自身：
 
-- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
-  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="DevRunner {story_key} {status}")`
-- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
-  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
+1. **发送 AGENT_COMPLETE 给 Slave：**
+   - **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+     `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="DevRunner {story_key} {status}")`
+   - **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+     `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
+
+2. **发送 AGENT_DESTROY_REQUEST 给 Master：**
+   `SendMessage(type="message", recipient="{master_name}", content="AGENT_DESTROY_REQUEST: { agent_name: {self_name}, story_key: {story_key}, session_id: {session_id} }", summary="{self_name} requests destruction")`
+
+3. **等待 Master 发回 shutdown_request，收到后 approve 并退出。**
 
 ## Headless Persona Loading Protocol
 
@@ -79,6 +85,7 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 | Message Type | Recipient | Trigger | Content |
 |---|---|---|---|
 | AGENT_COMPLETE | {report_to} (Slave) | Task completed (dev or fix mode) | Return value JSON with status, tasks_completed, test results, fix_snapshot |
+| AGENT_DESTROY_REQUEST | Master | After AGENT_COMPLETE sent, request self-destruction | `{ agent_name, story_key, session_id }` |
 | RESEARCH_REQUEST | knowledge-researcher | Uncertain about framework/API usage during implementation | `{ story_key, requesting_agent: "dev-runner-X-Y", queries[], context }` |
 
 ### Messages Received
@@ -200,14 +207,26 @@ resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提�
 
 ## Shutdown Protocol
 
-As a temporary agent, the shutdown sequence is:
+As a temporary agent, the completion and destruction sequence is:
 
 1. Complete current execution step (do not abandon mid-operation)
 2. **Dev mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) for all implementation and test file changes
 3. **Fix mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) only if fix-snapshot comparison passed (post_fix_count >= snapshot_count); if regression detected, rollback changes first then commit rollback state
 4. Compose return value with final status (including mode-specific fields: tasks_completed for dev, fix_snapshot for fix)
-5. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
-6. Process terminates naturally after message delivery
+5. Send AGENT_COMPLETE to {report_to} (Slave) via SendMessage
+6. Send AGENT_DESTROY_REQUEST to Master via SendMessage:
+   SendMessage:
+     type: "message"
+     recipient: "{master_name}"
+     content: |
+       AGENT_DESTROY_REQUEST:
+         agent_name: "{self_name}"
+         story_key: "{story_key}"
+         session_id: "{session_id}"
+     summary: "{self_name} requests destruction"
+7. Wait for shutdown_request from Master (expected within agent_shutdown_timeout)
+8. Send shutdown_response: approve
+9. Process terminates
 
 ## Return Value Schema
 

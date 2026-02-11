@@ -209,6 +209,30 @@ Instead of relying on `wait_after_navigation` as a fixed sleep:
 
 ---
 
+## Shutdown Protocol
+
+As a temporary agent, the completion and destruction sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. P32 Git Exit Gate — EXEMPT: E2E Inspector outputs (screenshots, E2E reports) are written exclusively to `.sprint-session/` which is a runtime directory outside git tracking. No git commit is required before returning to Orchestrator
+3. Compose return value with final status
+4. Send AGENT_COMPLETE to {report_to} (Slave) via SendMessage
+5. Send AGENT_DESTROY_REQUEST to Master via SendMessage:
+   SendMessage:
+     type: "message"
+     recipient: "{master_name}"
+     content: |
+       AGENT_DESTROY_REQUEST:
+         agent_name: "{self_name}"
+         story_key: "{story_key}"
+         session_id: "{session_id}"
+     summary: "{self_name} requests destruction"
+6. Wait for shutdown_request from Master (expected within agent_shutdown_timeout)
+7. Send shutdown_response: approve
+8. Process terminates
+
+---
+
 ## Return Value Schema
 
 ```yaml

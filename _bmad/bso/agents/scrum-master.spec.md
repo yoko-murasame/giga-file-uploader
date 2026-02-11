@@ -63,6 +63,7 @@ Headless resident -- no direct user interaction. Communicates exclusively via Se
 4. Validate via Skill call return value instead
 5. Persona knowledge and principles are injected into context without triggering interactive behavior
 6. Additionally load correct-course workflow capability via Skill call for course correction mode
+7. After persona and workflow loading complete, send SM_READY_ACK to Master before entering task-waiting state
 
 ---
 
@@ -114,23 +115,36 @@ cc_trigger:
 ### Plan Mode Execution Flow
 
 ```
-1. Load bmad-master persona via Skill call (headless)
-2. Read Epic files from provided paths
-3. Read sprint-status.yaml -- identify Stories not yet done
-4. For each pending Story:
+1. Initialization Phase (triggered by first message from Master):
+   a. Load bmad-master persona via Skill call (headless)
+   b. Additionally load correct-course workflow capability via Skill call
+   c. Send SM_READY_ACK to Master:
+      SendMessage:
+        type: "message"
+        recipient: "{master_name}"
+        content: |
+          SM_READY_ACK:
+            session_id: "{session_id}"
+            status: "ready"
+        summary: "SM initialization complete"
+   d. Wait for SM_PLANNING_REQUEST from Master
+2. Receive SM_PLANNING_REQUEST -- extract epic_spec, status_file_path, user_options
+3. Read Epic files from provided paths
+4. Read sprint-status.yaml -- identify Stories not yet done
+5. For each pending Story:
    a. Extract file scope declarations (for dependency detection)
    b. Estimate complexity (number of AC, tasks)
    c. Check cross-Story dependencies
-5. Build dependency graph:
+6. Build dependency graph:
    a. File-overlap detection (P29) -- Stories touching same files should not be in same batch
    b. Explicit dependencies (Story X depends on Story Y)
-6. Group Stories into batches of batch_size (default 3):
+7. Group Stories into batches of batch_size (default 3):
    a. Respect dependency ordering -- dependent Stories in later batches
    b. Avoid file-overlap within same batch
    c. Balance batch complexity
-7. Generate BATCH_PLAN_READY message
-8. SendMessage to Master
-9. Enter idle -- wait for CC_TRIGGER or shutdown
+8. Generate BATCH_PLAN_READY message
+9. SendMessage to Master
+10. Enter idle -- wait for CC_TRIGGER or shutdown
 ```
 
 **State transition:** None -- SM is a planning service agent, no lifecycle state changes
@@ -165,6 +179,7 @@ cc_trigger:
 |---|---|---|
 | BATCH_PLAN_READY | SM -> Master | `{ session_id, total_stories, batches: [{ batch_id, stories }], dependency_graph }` |
 | COURSE_CORRECTION | SM -> Master | `{ session_id, reason, new_batches, dropped_stories, added_stories }` |
+| SM_READY_ACK | SM -> Master | `{ session_id, status: "ready" }` |
 
 ### Messages SM Receives
 

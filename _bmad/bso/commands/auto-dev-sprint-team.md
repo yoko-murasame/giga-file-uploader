@@ -62,7 +62,8 @@ P45: Master Zero Business Context -- I do NOT analyze sprint-status.yaml
 P47: Resident Slot Pluggability -- Resident Agents are declared in config.yaml resident_slots.
      I iterate config to create/destroy, never hardcode any resident Agent logic.
 P51: Unified Agent Dispatch -- Slave sends AGENT_DISPATCH_REQUEST with full params.
-     Master creates Agent with complete context in one step. No two-phase round-trip.
+     Master creates Agent with complete context in one step. Agent sends AGENT_DESTROY_REQUEST
+     to Master after completion. Master confirms destruction via shutdown protocol.
 P54: No Temp Agent Roster Broadcast -- Temp Agent creation/destruction does NOT trigger
      AGENT_ROSTER_BROADCAST. Residents get contact info via TASK_ASSIGNMENT resident_contacts.
 P52: Sequential Slave Default -- max_concurrent_slaves: 1.
@@ -222,7 +223,14 @@ P48: SM Epic Authority -- SM is the sole authority on Story grouping
            session_id: "{session_id}"
    ```
 
-4. **Failure handling:**
+4. **Wait for SM initialization acknowledgment:**
+   ```
+   Wait for SM_READY_ACK from "scrum-master" (timeout: resident_slots.sm.startup_timeout seconds)
+   - SM_READY_ACK received: Log: [MASTER] SM initialization confirmed, ready for planning
+   - Timeout: Log: [MASTER] WARNING: SM_READY_ACK timeout, proceeding with degraded confidence (P2)
+   ```
+
+5. **Failure handling:**
    - SM creation failed -> FATAL, terminate Sprint (SM is required for planning)
    - Other resident failed -> WARNING, degrade and continue (P2)
    - Log: `[MASTER] Resident {name} created (idle)` or `[MASTER] Resident {name} FAILED, degraded`
@@ -251,6 +259,12 @@ P48: SM Epic Authority -- SM is the sole authority on Story grouping
          session_id: "{session_id}"
    ```
    - Master forwards epic_spec (resolved from CLI or interactive selection) and status path, does NOT analyze these files for business logic (P45)
+
+   ```
+   # IMPORTANT: SM planning may take significant time (reading Epic files, analyzing dependencies,
+   # building batch plan). Do NOT resend SM_PLANNING_REQUEST if no immediate response.
+   # Wait patiently for BATCH_PLAN_READY. Timeout is slave_config.slave_timeout_seconds.
+   ```
 
 2. **Wait for SM response: BATCH_PLAN_READY**
    ```yaml
@@ -296,6 +310,9 @@ P48: SM Epic Authority -- SM is the sole authority on Story grouping
 **This is the mechanical core of Master -- pure message routing, zero business interpretation.**
 
 ```
+  0. INITIALIZE TEMP AGENT REGISTRY
+     active_temp_agents = []   # Track all temp Agents created in this batch
+
 For each batch in sm_plan.batches:
 
   1. CREATE SLAVE
@@ -325,10 +342,15 @@ For each batch in sm_plan.batches:
        -> Task() create temp Agent with complete prompt:
           - Include full business context (story_key, mode, session_id, resident_contacts, report_to, config_overrides)
           - Agent starts working immediately upon creation, no second injection needed
+       -> Register agent in active_temp_agents: { name, story_key, created_at }
        -> No AGENT_ROSTER_BROADCAST (P54: temp Agent changes do not trigger roster broadcast)
 
      [SLAVE_BATCH_COMPLETE from Slave]
        -> Record batch result {batch_id, status, summary}
+       -> Zombie cleanup: check active_temp_agents registry for any remaining temp Agents
+          For each remaining agent:
+            -> Send shutdown_request (timeout: agent_shutdown_timeout)
+            -> Log: [MASTER] Zombie cleanup: {agent_name} destroyed
        -> shutdown_request to Slave
        -> Break loop, proceed to next batch
 
@@ -343,10 +365,23 @@ For each batch in sm_plan.batches:
        -> Update remaining batch plan per SM instructions
        -> Continue with updated plan
 
+     [AGENT_DESTROY_REQUEST from Temp Agent]
+       -> Parse: { agent_name, story_key, session_id }
+       -> SendMessage:
+            type: "shutdown_request"
+            recipient: "{agent_name}"
+            content: "Task complete, shutting down"
+       -> Wait shutdown_response (timeout: team_mode.agent_shutdown_timeout seconds)
+       -> If approved: Log: [MASTER] Temp Agent {agent_name} destroyed (confirmed)
+       -> If timeout: Log: [MASTER] Temp Agent {agent_name} destroy timeout (force)
+       -> Update active_temp_agents registry (remove agent)
+
      [Temp Agent idle notification (system automatic)]
-       -> Temp Agent completed and process exited naturally
-       -> No action needed (Agent already sent AGENT_COMPLETE to Slave via report_to)
-       -> Log: [MASTER] Temp Agent {name} exited (idle notification)
+       -> Check if Agent already destroyed via AGENT_DESTROY_REQUEST
+       -> If NOT destroyed (fallback):
+          Send shutdown_request, wait response (timeout: agent_shutdown_timeout)
+          Log: [MASTER] Temp Agent {name} fallback-destroyed (idle notification)
+       -> If already destroyed: Log: [MASTER] Temp Agent {name} idle after destroy (expected)
 
   3. TIMEOUT HANDLING
      If slave_config.slave_timeout_seconds exceeded:
@@ -438,10 +473,12 @@ For each batch in sm_plan.batches:
 | `BATCH_PLAN_READY` | SM -> Master | Step 3: plan ready for preview |
 | `AGENT_ROSTER_BROADCAST` | Master -> all residents | Step 2: one-time roster after resident init (P54: NOT triggered by temp Agent changes) |
 | `AGENT_DISPATCH_REQUEST` | Slave -> Master | Step 4: Slave needs temp Agent (contains full dispatch params) |
+| `AGENT_DESTROY_REQUEST` | Temp Agent -> Master | Step 4: temp Agent requests self-destruction after task completion |
 | `SLAVE_BATCH_COMPLETE` | Slave -> Master | Step 4: batch finished |
 | `CC_TRIGGER` | User -> Master | Step 4: user requests course correction |
 | `CC_REQUEST` | Master -> SM | Step 4: forward CC to SM |
 | `COURSE_CORRECTION` | SM -> Master | Step 4: SM issues plan update |
+| `SM_READY_ACK` | SM -> Master | Step 2: SM confirms initialization complete, ready for planning requests |
 | `SM_SUMMARY_REQUEST` | Master -> SM | Step 5: request final report |
 | `RESEARCH_REQUEST` | Any Agent -> KR | P2P: research needed |
 | `RESEARCH_RESULT` | KR -> requester | P2P: research complete |
@@ -464,6 +501,7 @@ For each batch in sm_plan.batches:
 | E10 | TeamDelete failed | 5 | Warning | Log warning, manual cleanup needed |
 | E11 | Lock release failed | 5 | Warning | Log warning, manual cleanup needed |
 | E12 | sprint-status.yaml read failed (interactive mode) | 1 | Error | Display error, prompt user to provide epic_spec manually or fix path |
+| E13 | Temp Agent destroy timeout | 4 | Warning | Force continue, agent may be orphaned. Zombie cleanup at batch end will catch it. |
 
 ---
 
@@ -493,7 +531,7 @@ All user interaction points are auto-confirmed after 3 seconds:
 |---|-----------|-------------|
 | P45 | Master Zero Business Context | Master does not analyze sprint-status.yaml for Story dependencies, file scopes, or execution ordering. MAY read it for UI display (Epic listing for user selection in Step 1.5). All business analysis delegated to SM. |
 | P47 | Resident Slot Pluggability | Resident Agents declared in config.yaml resident_slots. Master iterates config to create/destroy. Adding a new resident = add config entry, no Master code change. |
-| P51 | Unified Agent Dispatch | Slave sends AGENT_DISPATCH_REQUEST with full params (agent_type, story_key, mode, resident_contacts, etc). Master creates Agent with complete context in one step. No two-phase round-trip. |
+| P51 | Unified Agent Dispatch | Slave sends AGENT_DISPATCH_REQUEST with full params (agent_type, story_key, mode, resident_contacts, etc). Master creates Agent with complete context in one step. After task completion, Agent sends AGENT_DESTROY_REQUEST to Master for confirmed destruction. No two-phase creation round-trip; destruction is explicit and confirmed. |
 | P52 | Sequential Slave Default | max_concurrent_slaves: 1. One Slave completes before next starts. Future: increase for parallel batch execution. |
 | P48 | SM Epic Authority | SM is the sole authority on Story grouping and priority ordering. Master/Slave do NOT override SM decisions. |
 | P2 | Degrade over abort | Non-SM resident failures degrade gracefully. Slave timeout marks abnormal, continues. |
@@ -520,6 +558,7 @@ User              Master (C1-TEAM)          SM (resident)        Slave          
  |                     |-- Task(KR) ------------------------------------------>       |
  |                     |-- ROSTER_BROADCAST -->|                   |        --------> |
  |                     |  (one-time only, P54) |                   |                  |
+ |                     |<-- SM_READY_ACK ------|                   |                  |
  |                 Step 3: SM Planning         |                   |                  |
  |                     |-- SM_PLANNING_REQ --->|                   |                  |
  |                     |<-- BATCH_PLAN_READY --|                   |                  |
@@ -532,7 +571,9 @@ User              Master (C1-TEAM)          SM (resident)        Slave          
  |                     |                       |                   |--RESEARCH_REQ--> |
  |                     |                       |                   |<-RESEARCH_RES--  |
  |                     |                       |  temp->Slave: AGENT_COMPLETE         |
- |                     |  (idle notification)  |  temp exits naturally                |
+ |                     |                       |  temp->Master: AGENT_DESTROY_REQUEST |
+ |                     |-- shutdown temp ------>|  temp: shutdown_response approve     |
+ |                     |  (temp destroyed)      |                                     |
  |                     |<-- SLAVE_BATCH_COMPLETE ------------------|                  |
  |                     |-- shutdown Slave ------|-----------------> |                  |
  |                     |   (repeat for next batch)                 |                  |

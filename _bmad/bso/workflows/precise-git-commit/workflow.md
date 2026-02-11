@@ -36,6 +36,7 @@ status: validated
 | dev-execution (C4) | 开发完成后提交代码 | `dev_complete` |
 | code-review (C5) | Code Review 完成后提交报告 | `review_complete` |
 | code-review (C5) | Fix 修复后提交代码 | `fix_complete` |
+| slave-orchestration (C6) | Batch 完成后提交 sprint-status.yaml | `status_update` |
 | Orchestrator | Story 到达 done，执行 squash | `squash` |
 
 ---
@@ -50,7 +51,7 @@ inputs:
   # commit 模式 required:
   commit_mode_required:
     files: ["/path/to/file1", "/path/to/file2"]  # 要提交的文件列表（绝对路径）
-    commit_type: "story_created" | "story_revised" | "dev_complete" | "review_complete" | "fix_complete"
+    commit_type: "story_created" | "story_revised" | "dev_complete" | "review_complete" | "fix_complete" | "status_update"
     story_key: "3-1"                           # Story 标识符
     session_id: "sprint-2026-02-07-001"        # 会话 ID
   # commit 模式 optional:

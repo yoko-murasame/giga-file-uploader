@@ -33,8 +33,8 @@
 
 ### Phase 5: Integration & Testing
 - [x] Implement module installer (install.md) — `_module-installer/installer.js` + `platform-specifics/`
-- [ ] End-to-end integration testing
-- [ ] Dry-run mode validation
+- [x] End-to-end integration testing
+- [x] Dry-run mode validation
 - [ ] Health check comprehensive testing
 - [ ] Token budget monitoring validation
 - [ ] File-overlap dependency detection testing

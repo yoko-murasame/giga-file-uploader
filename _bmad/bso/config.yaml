@@ -10,6 +10,7 @@ role_mapping:
   review_runner_persona: "bmad:bmm:agents:architect"  # Different from dev_runner for review independence (Principle 30)
   e2e_inspector_persona: "bmad:bmm:agents:dev"
   knowledge_researcher_persona: "bmad:bmm:agents:architect"
+  sprint_slave_persona: "bmad:core:agents:bmad-master"  # Inherits project management context for orchestration (P55: context only, not execution)
 
 # Workflow mapping — which BMAD workflow for each phase
 workflow_mapping:
@@ -99,6 +100,7 @@ git_commit_patterns:
   dev_complete: "feat: Story {epic}.{story}: {title}"
   review_complete: "docs: Story {epic}.{story}: code review [round {round}]"
   fix_complete: "fix: Story {epic}.{story}: [review {round}] {description}"
+  status_update: "chore: batch-{batch_id} sprint-status 同步"
 
 # Git squash strategy (Principle 28)
 git_squash_strategy: "per_story"     # per_story | per_phase | none
@@ -199,6 +201,7 @@ slave_config:
   subagent_type: "bso-sprint-slave"
   auto_destroy_on_complete: true
   slave_timeout_seconds: 5400
+  persona_ref: "bmad:core:agents:bmad-master"   # Slave inherits bmad-master for project context awareness
 
 # ============================================================
 # Startup Interaction — Master startup interaction enhancement

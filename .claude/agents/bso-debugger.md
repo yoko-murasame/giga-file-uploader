@@ -7,7 +7,7 @@ icon: "DB"
 module: bso
 hasSidecar: false
 default_persona: null
-status: Draft
+status: Completed
 ---
 
 # BSO Debugger Agent

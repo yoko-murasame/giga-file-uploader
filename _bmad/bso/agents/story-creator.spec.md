@@ -66,12 +66,18 @@ Headless — no direct user interaction. All output written to Story .md files f
 
 ## Result Delivery Protocol
 
-通过以下方式传递结果给 Orchestrator：
+通过以下方式传递结果给 Orchestrator，完成后请求 Master 销毁自身：
 
-- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
-  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="StoryCreator {story_key} {status}")`
-- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
-  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
+1. **发送 AGENT_COMPLETE 给 Slave：**
+   - **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+     `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="StoryCreator {story_key} {status}")`
+   - **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+     `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
+
+2. **发送 AGENT_DESTROY_REQUEST 给 Master：**
+   `SendMessage(type="message", recipient="{master_name}", content="AGENT_DESTROY_REQUEST: { agent_name: {self_name}, story_key: {story_key}, session_id: {session_id} }", summary="{self_name} requests destruction")`
+
+3. **等待 Master 发回 shutdown_request，收到后 approve 并退出。**
 
 ---
 
@@ -101,6 +107,7 @@ BSO agents are **headless** — they do not expose interactive menus. They are d
 | Message Type | Recipient | Trigger | Content |
 |---|---|---|---|
 | AGENT_COMPLETE | {report_to} (Slave) | Task completed (create or revise) | Return value JSON with status, story_file, completeness_checks |
+| AGENT_DESTROY_REQUEST | Master | After AGENT_COMPLETE sent, request self-destruction | `{ agent_name, story_key, session_id }` |
 | RESEARCH_REQUEST | knowledge-researcher | Technical claim verification needed (Principle 27) | `{ story_key, requesting_agent: "story-creator-X-Y", queries[], context }` |
 
 ### Messages Received
@@ -246,13 +253,25 @@ If any check fails:
 
 ## Shutdown Protocol
 
-As a temporary agent, the shutdown sequence is:
+As a temporary agent, the completion and destruction sequence is:
 
 1. Complete current execution step (do not abandon mid-operation)
 2. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending changes exist
 3. Compose return value with final status (create or revise mode result)
-4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
-5. Process terminates naturally after message delivery
+4. Send AGENT_COMPLETE to {report_to} (Slave) via SendMessage
+5. Send AGENT_DESTROY_REQUEST to Master via SendMessage:
+   SendMessage:
+     type: "message"
+     recipient: "{master_name}"
+     content: |
+       AGENT_DESTROY_REQUEST:
+         agent_name: "{self_name}"
+         story_key: "{story_key}"
+         session_id: "{session_id}"
+     summary: "{self_name} requests destruction"
+6. Wait for shutdown_request from Master (expected within agent_shutdown_timeout)
+7. Send shutdown_response: approve
+8. Process terminates
 
 ---
 
