@@ -74,3 +74,13 @@ development_status:
   5-1-file-retention-period-selection: done
   5-2-offline-mode-and-network-status-awareness: done
   epic-5-retrospective: optional
+
+  # Epic 6: Bug 修复与体验优化
+  epic-6: backlog
+  6-1-upload-action-bar-fixed-bottom-layout: backlog
+  6-2-disable-file-drop-zone-during-upload: backlog
+  6-3-replace-app-icon: backlog
+  6-4-streaming-progress-update-128kb-granularity: backlog
+  6-5-realtime-upload-speed-display: backlog
+  6-6-windows-dual-bundle-nsis-and-portable: backlog
+  epic-6-retrospective: optional

@@ -667,3 +667,185 @@ So that 我在离线时也能找到之前上传的链接信息。
 
 **And** 网络状态检测逻辑在 Rust 后端实现
 **And** `appStore` 包含网络状态字段，用于 UI 条件展示
+
+## Epic 6: Bug 修复与体验优化
+
+修复实施阶段发现的交互缺陷和性能问题，补全遗漏的构建配置，提升上传体验的完整度和专业感。
+
+**变更来源:** Sprint 变更提案 2026-02-12
+
+### Epic 依赖关系（更新）
+
+```
+Epic 1 → Epic 2 → Epic 3 → Epic 4 → Epic 5
+                                        ↓
+                                    Epic 6（Bug 修复与优化）
+```
+
+### Story 6.1: 操作栏固定底部布局修复
+
+As a 用户,
+I want 上传操作栏始终固定在窗口底部,
+So that 无论文件列表多长，我都能看到上传按钮和统计信息。
+
+**Acceptance Criteria:**
+
+**Given** 用户添加了大量文件到待上传列表
+**When** 文件列表超出可视区域高度
+**Then** 文件列表区域出现独立滚动条
+**And** UploadActionBar 始终固定在窗口底部，不随列表滚动
+
+**Given** 用户切换到"历史记录" Tab
+**When** 历史记录列表较长
+**Then** 历史记录页面布局正常，不受布局修复影响
+
+**技术方案:**
+- `App.tsx` 根容器 `min-h-screen` → `h-screen overflow-hidden`
+- 确保 TabNav 内容区正确传递高度
+- `UploadFileList` 作为唯一滚动区域（`flex-1 overflow-y-auto`）
+- `UploadActionBar` 移除 `sticky bottom-0`，依赖 flex 布局自然固定
+
+**影响文件:**
+- `src/App.tsx`
+- `src/components/shared/TabNav.tsx`（可能）
+- `src/components/upload/UploadPage.tsx`（可能）
+- `src/components/upload/UploadActionBar.tsx`
+
+### Story 6.2: 上传中文件添加区禁用
+
+As a 用户,
+I want 上传进行中时无法通过拖拽或点击添加新文件,
+So that 不会误操作导致上传状态混乱。
+
+**Acceptance Criteria:**
+
+**Given** 用户已点击"开始上传"，上传正在进行中
+**When** 用户尝试拖拽文件到窗口
+**Then** 拖拽操作被阻止，文件不会被添加到队列
+**And** 拖拽区视觉降低透明度 + `cursor-not-allowed`
+
+**Given** 上传正在进行中
+**When** 用户尝试点击拖拽区打开文件选择器
+**Then** 点击无响应，文件选择器不会打开
+**And** 组件添加 `aria-disabled="true"` 无障碍属性
+
+**Given** 所有文件上传完成或清空列表后
+**When** 回到初始状态
+**Then** 拖拽区恢复正常交互
+
+**影响文件:**
+- `src/components/upload/FileDropZone.tsx`
+- `src/hooks/useDragDrop.ts`（可能需要 disabled 参数）
+
+### Story 6.3: 应用图标替换
+
+As a 用户,
+I want 应用使用自定义品牌图标而非 Tauri 默认图标,
+So that 应用在桌面、任务栏和 Dock 中具有专业的视觉识别度。
+
+**Acceptance Criteria:**
+
+**Given** 根目录下存在 `icon_candidate.png`（实际为 JPEG 格式，640x640）和 `icon_candidate.svg`
+**When** 执行图标生成流程
+**Then** 先将 JPEG 转换为真正的 PNG 格式（`sips -s format png` 或同等工具）
+**And** 使用 `pnpm tauri icon` 生成所有所需尺寸（32x32, 128x128, 128x128@2x, icon.ico, icon.icns）
+**And** `src-tauri/icons/` 下所有图标文件被替换
+
+**Given** 图标已替换
+**When** 在 macOS 上运行 `pnpm tauri dev`
+**Then** Dock 和窗口标题栏显示自定义图标
+
+**影响文件:**
+- `src-tauri/icons/`（全部替换）
+
+### Story 6.4: 上传进度流式更新（128KB 粒度）
+
+As a 用户,
+I want 上传大文件时进度条平滑推进而非长时间静止后跳跃,
+So that 我能直觉感受到上传在持续进行，不会误以为上传卡住。
+
+**Acceptance Criteria:**
+
+**Given** 用户上传一个 2.9GB 文件（3 个逻辑分片，33 个 100MB chunks）
+**When** 上传进行中
+**Then** 进度条平滑更新，无超过 2 秒的静止期
+**And** 进度更新粒度为每 128KB（NFR2），而非每 100MB chunk 完成后
+
+**Given** 上传引擎通过 reqwest 发送 HTTP 请求
+**When** 发送 100MB chunk 数据
+**Then** 使用流式 Body（`reqwest::Body::wrap_stream`），每发送 128KB 调用 `counter.fetch_add(131_072)`
+**And** 现有 50ms debounce 聚合机制保持不变
+
+**Given** 多个 chunk 并发上传（默认 8 并发）
+**When** 多线程同时更新 `AtomicU64` 计数器
+**Then** 原子操作保证线程安全，进度汇总准确无丢失
+
+**技术方案:**
+- `api/v1.rs`: `upload_chunk()` 接收 `Arc<AtomicU64>` 进度计数器，流式 Body 每 128KB 回调
+- `services/upload_engine.rs`: 将计数器传递给 API 调用，移除原有的 chunk 完成后 `fetch_add`
+- `services/progress.rs`: 聚合器无需改动
+
+**影响文件:**
+- `src-tauri/src/api/v1.rs`
+- `src-tauri/src/services/upload_engine.rs`
+
+### Story 6.5: 每个任务的实时上传速度显示
+
+As a 用户,
+I want 上传过程中看到每个文件的实时传输速度,
+So that 我能了解当前网络状况和预估剩余时间。
+
+**Acceptance Criteria:**
+
+**Given** 文件正在上传
+**When** 进度事件推送到前端
+**Then** 每个文件任务旁显示实时速度（格式如 `12.5 MB/s`）
+**And** 速度基于滑动窗口或最近 N 个采样点平均计算，避免瞬时波动
+
+**Given** 上传完成或暂停
+**When** 速度为 0
+**Then** 速度显示消失或显示 `--`
+
+**Given** 多线程并发上传（默认 8 并发）
+**When** 计算速度
+**Then** 速度自然包含所有并发线程贡献的聚合值
+
+**技术方案:**
+- `services/progress.rs`: 在 50ms 定时器中记录 `(timestamp, bytes_uploaded)` 采样，计算速度
+- `models/upload.rs`: 进度结构体新增 `speed: u64` 字段（bytes/sec）
+- `upload:progress` 事件 payload 新增 `speed` 字段
+- `UploadFileItem.tsx`: 显示格式化速度
+
+**依赖:** Story 6.4 必须先完成
+
+**影响文件:**
+- `src-tauri/src/services/progress.rs`
+- `src-tauri/src/models/upload.rs`
+- `src/components/upload/UploadFileItem.tsx`
+- `src/stores/uploadStore.ts`
+
+### Story 6.6: Windows 双版本打包（NSIS + Portable）
+
+As a 用户,
+I want 在 Windows 上既有安装包也有免安装便携版,
+So that 我可以根据使用场景选择合适的版本。
+
+**Acceptance Criteria:**
+
+**Given** 执行 `pnpm tauri build` 在 Windows 环境
+**When** 构建完成
+**Then** 产出 NSIS 安装包（setup.exe）
+**And** 产出 Portable 免安装版（可直接运行的 exe）
+
+**Given** 用户使用 Portable 版本
+**When** 在 Win10 1803+ 或 Win11 上运行
+**Then** 应用正常启动运行（依赖系统预装的 WebView2 运行时）
+
+**Given** 用户使用 NSIS 安装包
+**When** 安装完成
+**Then** WebView2 运行时自动捆绑安装（如目标机器缺失）
+
+**依赖:** Story 6.3（图标替换）建议先完成
+
+**影响文件:**
+- `src-tauri/tauri.conf.json`（bundle 配置）
