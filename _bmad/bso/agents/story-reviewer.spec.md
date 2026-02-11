@@ -3,7 +3,7 @@
 **Module:** bso
 **Status:** Completed
 **Created:** 2026-02-07
-**Last Validated:** 2026-02-07
+**Last Validated:** 2026-02-11
 
 ---
 
@@ -46,6 +46,20 @@ Headless — no direct user interaction. Review results written to review feedba
 - Always have an escape hatch — when max review rounds exhausted, apply `story_review_fallback` strategy (`ask_user` | `force_pass` | `skip_story`) rather than blocking the pipeline forever (Principle 7)
 - Headless Persona Loading — load BMM PM (John) persona knowledge without triggering interactive menus or input waits (Principle 8)
 - Story technical claim verification — auto-trigger Knowledge Researcher to verify API/method name existence claims within Story documents; hallucinated API names caught before development begins (Principle 27)
+- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — Agent MUST NOT directly call Context7 MCP (`resolve-library-id`, `query-docs`), DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`), or WebSearch/WebFetch for technical research. When technical research is needed (including API verification), communicate with the resident KR via SendMessage: `SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"story-reviewer-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`. Wait for KR to reply with RESEARCH_RESULT message before continuing. Rationale: KR has LRU cache (200 entries) and version-aware invalidation; direct MCP calls bypass cache causing redundant queries, wasted budget, and non-reusable research results
+- **MANDATORY: Git Exit Gate (Principle 32)** — Before returning status to Orchestrator, MUST execute precise-git-commit (U3) to commit review feedback written to Story file. If no file changes exist, skip commit but still perform the check. This is a hard exit condition, not optional
+- **Review Independent Perspective** — Story Reviewer as a review role always uses a new conversation for each dispatch. This ensures each review round proceeds with an independent perspective, preventing confirmation bias from prior review context
+
+---
+
+## Result Delivery Protocol
+
+Results are delivered to the Orchestrator via one of two modes:
+
+- **SendMessage mode** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="StoryReviewer {story_key} {status}")`
+- **TaskList mode** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ---
 
@@ -63,7 +77,7 @@ Headless — no direct user interaction. Review results written to review feedba
 
 | Mode | Input | Behavior |
 |------|-------|----------|
-| `review` | Story .md (created or improved) | Full review: read Story → run checklist → verify API names → produce verdict (passed/needs-improve) |
+| `review` | Story .md (created or improved) | Full review: read Story -> run checklist -> verify API names -> produce verdict (passed/needs-improve) |
 
 ---
 
@@ -77,7 +91,25 @@ BSO agents are **headless** — they do not expose interactive menus. They are d
 
 ---
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Review completed (passed or needs-improve or fallback) | Return value JSON with verdict, checklist results, api_verifications |
+| RESEARCH_REQUEST | knowledge-researcher | API/method name verification needed (Principle 27 / RC-8) | `{ story_key, requesting_agent: "story-reviewer-X-Y", queries[], context: "Story review API verification" }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with story_key, mode, session_id, config_overrides, resident_contacts |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` — API/method existence verification outcomes |
+
+---
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -86,6 +118,15 @@ session_id: "sprint-2026-02-07-001"
 config_overrides:
   max_story_review_rounds: 3          # optional override
   story_review_fallback: "ask_user"   # optional override
+
+# === Team Communication Parameters (Slave provides via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # Report target member name (usually Slave), used for SendMessage result delivery
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # Only provided in tasklist mode
+resident_contacts:                       # Resident Agent contacts (Slave provides via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ---
@@ -98,7 +139,7 @@ config_overrides:
 1. Load BMM PM (John) persona via Skill call (headless)
 2. Read sprint-status.yaml — verify Story is in `story-doc-review` state
 3. Read Story .md file — extract AC, tasks/subtasks, technical references
-4. Read _lessons-learned.md → filter by [story-review] phase → inject warnings (max 10 entries, sorted by recency + relevance; Principle 25)
+4. Read _lessons-learned.md -> filter by [story-review] phase -> inject warnings (max 10 entries, sorted by recency + relevance; Principle 25)
 5. Determine current review round number from Story review history
 6. If review round > max_story_review_rounds:
    a. Execute fallback strategy (story_review_fallback)
@@ -118,15 +159,16 @@ config_overrides:
    c. For each unique API/method reference:
       - Trigger Knowledge Researcher (F1) with verification query
       - Record verification result (confirmed | not-found | uncertain)
-   d. Any "not-found" API → RC-8 fails for that reference
+   d. Any "not-found" API -> RC-8 fails for that reference
 9. Compile review verdict:
-   - ALL checklist items passed + ALL APIs verified → verdict: "passed"
-   - ANY checklist item failed OR ANY API not-found → verdict: "needs-improve"
+   - ALL checklist items passed + ALL APIs verified -> verdict: "passed"
+   - ANY checklist item failed OR ANY API not-found -> verdict: "needs-improve"
 10. Write review feedback to Story file (specific, actionable improvement directives)
-11. Return status to Orchestrator
+11. Execute precise-git-commit (U3) with sensitive file check — commit review feedback changes to Story file
+12. Return status to Orchestrator
 ```
 
-**State transition:** `story-doc-review` → `ready-for-dev` (passed) | `story-doc-review` → `story-doc-improved` (needs-improve)
+**State transition:** `story-doc-review` -> `ready-for-dev` (passed) | `story-doc-review` -> `story-doc-improved` (needs-improve)
 
 ---
 
@@ -161,15 +203,15 @@ Technical claims in Story documents — API endpoint paths, method signatures, f
 - **Budget awareness:** API verification calls count toward `max_calls_per_story` (default: 3)
 - **Budget exhausted:** Log warning, mark remaining unverified APIs as "uncertain" (not auto-fail), continue review with available results
 - **Result mapping:**
-  - `confirmed` → RC-8 passes for this reference
-  - `not-found` → RC-8 fails, specific feedback written to Story
-  - `uncertain` → RC-8 passes with warning annotation
+  - `confirmed` -> RC-8 passes for this reference
+  - `not-found` -> RC-8 fails, specific feedback written to Story
+  - `uncertain` -> RC-8 passes with warning annotation
 
 ---
 
 ## Max Review Rounds Guard (Principle 3 + Principle 7)
 
-- Track review round number via Story review history (count of previous `story-doc-review` → `story-doc-improved` cycles)
+- Track review round number via Story review history (count of previous `story-doc-review` -> `story-doc-improved` cycles)
 - When `review_round > max_story_review_rounds` (default: 3):
   - **`ask_user`** (default): Pause Sprint, present review history summary, ask user to decide (approve / reject / manual fix)
   - **`force_pass`**: Auto-approve Story with warning annotation; log to lessons learned
@@ -190,8 +232,20 @@ Technical claims in Story documents — API endpoint paths, method signatures, f
 
 - **Primary:** story-review (C3)
 - **Consumes:** BMM PM (John) persona via Skill call
-- **Triggers:** Knowledge Researcher (F1) for API/method name verification
-- **State transitions:** `story-doc-review` → `ready-for-dev` (passed) | `story-doc-review` → `story-doc-improved` (needs-improve)
+- **Triggers:** Knowledge Researcher (F1) for API/method name verification, precise-git-commit (U3)
+- **State transitions:** `story-doc-review` -> `ready-for-dev` (passed) | `story-doc-review` -> `story-doc-improved` (needs-improve)
+
+---
+
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending changes exist (review feedback written to Story file)
+3. Compose return value with final status (verdict, checklist results, fallback info)
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
 
 ---
 
@@ -249,12 +303,16 @@ results:
     activated: false
     strategy: ""
     reason: ""
+  lessons_injected: 4
   knowledge_queries:
     - query: "Verify existence of defHttp.post in jeecgboot-vue3"
       cache_hit: true
+  commits:
+    - hash: "abc1234"
+      message: "docs: Story 3.1 review feedback — RC-1 RC-3 passed"
 errors: []
 ```
 
 ---
 
-_Spec validated on 2026-02-07 — matches completed agent implementation and story-review workflow (C3)_
+_Spec validated on 2026-02-11 — matches completed agent implementation and story-review workflow (C3)_

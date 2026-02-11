@@ -1,7 +1,20 @@
+---
+name: interactive-guide
+id: F4
+description: "No-argument interactive onboarding — guide users through sprint setup via step-by-step prompts, producing structured execution parameters identical to F3 output"
+module: bso
+agent: orchestrator
+version: 1.0.0
+type: feature
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: interactive-guide
 
 **Module:** bso
-**Status:** Validated — Aligned with workflow.md
+**Status:** Validated -- Aligned with workflow.md
 **Created:** 2026-02-07
 **Updated:** 2026-02-07
 
@@ -56,7 +69,7 @@ return:
   filter: "incomplete"
   execution_mode: "full_lifecycle"
   options:
-    review_strictness: "normal"
+    review_strictness: "medium"
     skip_story_review: false
     e2e: false
     max_review_rounds: 10

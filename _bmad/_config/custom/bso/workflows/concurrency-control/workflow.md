@@ -3,7 +3,8 @@ name: concurrency-control
 id: U2
 description: "Manage .sprint-running mutex to prevent parallel sprint execution conflicts — acquire, release, and zombie lock detection"
 module: bso
-agent: shared
+agent: bso-shared
+type: utility
 version: 1.0.0
 created: 2026-02-07
 updated: 2026-02-07
@@ -26,9 +27,9 @@ status: validated
 
 | Caller | 触发场景 | 操作模式 |
 |--------|---------|---------|
-| auto-dev-sprint (C1) | Sprint 启动时 | `acquire` -- 获取锁 |
-| auto-dev-sprint (C1) | Sprint 正常完成时 | `release` -- 释放锁 |
-| auto-dev-sprint (C1) | Sprint 异常终止时 | `release` -- 释放锁（错误恢复路径） |
+| auto-dev-sprint-team | Sprint 启动时 | `acquire` -- 获取锁 |
+| auto-dev-sprint-team | Sprint 正常完成时 | `release` -- 释放锁 |
+| auto-dev-sprint-team | Sprint 异常终止时 | `release` -- 释放锁（错误恢复路径） |
 | health-check (U1) | 环境检查 Step 9 | `check` -- 仅检查锁状态，不获取/释放 |
 
 ---
@@ -366,7 +367,7 @@ zombie_threshold_hours: 24                    # 锁文件超过此时长视为 z
 ### Acquire Flow
 
 ```
-Orchestrator (C1)                Concurrency Control (U2)
+Orchestrator                     Concurrency Control (U2)
     |                                    |
     |--- acquire(session_id, epic) ----->|
     |                                    |
@@ -396,7 +397,7 @@ Orchestrator (C1)                Concurrency Control (U2)
 ### Release Flow
 
 ```
-Orchestrator (C1)                Concurrency Control (U2)
+Orchestrator                     Concurrency Control (U2)
     |                                    |
     |--- release(session_id) ---------->|
     |                                    |

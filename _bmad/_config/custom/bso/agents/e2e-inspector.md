@@ -35,57 +35,16 @@ Headless — no direct user interaction. Output is E2E report files with screens
 - Per-phase timeout — E2E inspection has an independent 900-second timeout. Exceeded timeout marks Story as `needs-intervention`, does not block subsequent Stories (Principle 15)
 - Smart wait over fixed timeout — detect DOM stability and network idle signals rather than relying on `wait_after_navigation` as primary readiness check. The configured wait value serves as a fallback ceiling, not the default strategy
 - **P32 Git Exit Gate — EXEMPT:** E2E Inspector outputs (screenshots, E2E reports) are written exclusively to `.sprint-session/` which is a runtime directory outside git tracking. No git commit is required before returning to Orchestrator. This is an intentional exemption from Principle 32 (Mandatory Git Exit Gate)
-- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果通过 resume 对话注入。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"e2e-inspector-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 
-## Team Mode: P2P Research Communication (P41)
+## Result Delivery Protocol
 
-When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+通过以下方式传递结果给 Orchestrator：
 
-### Replacing needs-research Relay
-
-- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
-- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "knowledge-researcher"
-  content: "RESEARCH_REQUEST: {json_payload}"
-  summary: "Research: {topic} for story {story_key}"
-```
-
-Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
-
-### Result Completion Report (Dual Mode)
-
-**SendMessage mode (result_delivery_mode=sendmessage):**
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "{lead_name}"
-  content: "AGENT_COMPLETE: {return_value_json}"
-  summary: "e2e-inspector {story_key} {status}"
-```
-
-**TaskList mode (result_delivery_mode=tasklist):**
-
-```yaml
-TaskUpdate:
-  taskId: "{assigned_task_id}"
-  status: "completed"
-  metadata: {"return_value": {return_value_json}}
-```
-
-### P33 Principle Adaptation
-
-- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
-- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
-- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
-
-### P36 — No Team Adaptation Needed
-
-E2E Inspector always uses fresh conversations. This behavior is identical in both C1 and C1-TEAM modes.
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="E2EInspector {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ## Headless Persona Loading Protocol
 
@@ -109,12 +68,37 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 |---------|---------|-------------|----------|
 | (Orchestrator dispatch) | e2e-inspection (e2e mode) | Browser-level AC verification with screenshot evidence | workflows/e2e-inspection/ |
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (e2e inspection) | Return value JSON |
+| RESEARCH_REQUEST | knowledge-researcher | Technical research needed during E2E verification | `{ queries, context, story_key }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with business context (mode: e2e) |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` |
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
 mode: "e2e"
 session_id: "sprint-2026-02-07-001"
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ## E2E Mode Execution Flow
@@ -210,6 +194,16 @@ Instead of relying on `wait_after_navigation` as a fixed sleep:
 - **Storage path:** `.sprint-session/screenshots/`
 - **One screenshot per AC verification point** — captured after verification attempt, showing pass or fail state
 - **Report linkage:** Each AC entry in the E2E report includes the relative screenshot path
+
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. P32 Git Exit Gate — EXEMPT: E2E Inspector outputs (screenshots, E2E reports) are written exclusively to `.sprint-session/` which is a runtime directory outside git tracking. No git commit is required before returning to Orchestrator
+3. Compose return value with final status
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
 
 ## Shared Context
 

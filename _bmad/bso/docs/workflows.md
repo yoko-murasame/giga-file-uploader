@@ -1,6 +1,6 @@
 # Workflows Reference
 
-BSO includes 15 workflows organized in 4 categories: Command (1), Core (4), Feature (4), and Utility (6).
+BSO includes 16 workflows organized in 3 categories: Core (5), Feature (5), and Utility (6). The main orchestrator command (auto-dev-sprint) dispatches these workflows.
 
 ---
 
@@ -63,6 +63,16 @@ BSO includes 15 workflows organized in 4 categories: Command (1), Core (4), Feat
 
 ---
 
+### C5: slave-orchestration
+
+**Purpose:** Batch-level Story lifecycle management within a Slave context. Manages Story creation, review, dev, and code-review dispatch for a batch of Stories.
+
+**Agent:** Sprint Slave (BSO Native)
+
+**Key Steps:** Receive Batch Assignment → Story Loop (Create → Review → Dev → Code Review → E2E) → Batch Report → SLAVE_BATCH_COMPLETE
+
+---
+
 ## Feature Workflows
 
 ### F1: knowledge-research
@@ -102,6 +112,16 @@ BSO includes 15 workflows organized in 4 categories: Command (1), Core (4), Feat
 **Agent:** Orchestrator (inline logic, interactive)
 
 **Key Steps:** Status Display → Epic Selection → Mode Selection → Review Settings → Feature Toggle → Dry-Run Preview → Confirmation
+
+---
+
+### F5: course-correction
+
+**Purpose:** Navigate significant changes during Sprint execution -- analyze impact, re-plan batches, validate dependencies, and deliver correction plan to Master.
+
+**Agent:** Scrum Master (BSO Native)
+
+**Key Steps:** Trigger Analysis → State Assessment → Impact Analysis → Re-Planning → Dependency Re-Check (P29) → Plan Delivery (COURSE_CORRECTION)
 
 ---
 

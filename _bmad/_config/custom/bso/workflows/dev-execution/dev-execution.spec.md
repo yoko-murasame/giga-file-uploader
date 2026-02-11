@@ -1,3 +1,16 @@
+---
+name: dev-execution
+id: C4
+description: "C4: TDD development (dev mode) and targeted fix (fix mode) with Scope Guard, Test Snapshot, and Git Safeguard"
+module: bso
+agent: bso-dev-runner
+type: core
+version: 1.1.0
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: dev-execution
 
 **Module:** bso
@@ -56,7 +69,7 @@
 | `story_key` | Match format `\d+-\d+` | abort, status: "failure" |
 | `mode` | Value is "dev" or "fix" | abort, status: "failure", error: "Invalid mode" |
 | `session_id` | Non-empty string | abort, status: "failure" |
-| `config_overrides.review_strictness` | Value is "high", "medium", or "low" (fix mode only) | Use `defaults.review_strictness` |
+| `config_overrides.review_strictness_threshold` | Value is "high", "medium", or "low" (fix mode only) | Use `defaults.review_strictness` |
 
 ---
 

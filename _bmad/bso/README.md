@@ -1,8 +1,8 @@
 # BSO: Sprint Orchestrator
 
-**Autonomous Sprint Development Engine**
+**Autonomous Sprint Development Engine -- Three-Layer Master-Slave Architecture**
 
-BSO coordinates 6 specialized agents through a 9-state machine architecture for zero-intervention sprint automation. One command to start, wake up to a completed Epic with full quality assurance. Features intelligent knowledge management, dual-layer quality review, optional E2E browser verification, natural language intent parsing, YOLO full-auto mode, and post-completion User Bug Feedback Protocol.
+BSO coordinates 10 specialized agents through a three-layer Master-Slave architecture (Master factory + SM/Slave orchestration + Agent execution) and 9-state machine for zero-intervention sprint automation. One command to start, wake up to a completed Epic with full quality assurance. Features intelligent knowledge management, dual-layer quality review, optional E2E browser verification, natural language intent parsing, YOLO full-auto mode, batch-based Slave orchestration, pluggable resident Agent slots, and post-completion User Bug Feedback Protocol.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ BSO coordinates 6 specialized agents through a 9-state machine architecture for 
 
 ## Components
 
-### Agents (6)
+### Agents (10)
 
 | Agent | Role | Default Persona |
 |-------|------|----------------|
@@ -35,16 +35,20 @@ BSO coordinates 6 specialized agents through a 9-state machine architecture for 
 | Review Runner | Adversarial code review + Bug triage mode | BMM Architect (Winston) |
 | E2E Inspector | Browser-level verification (optional) | BMM Dev (Amelia) |
 | Knowledge Researcher | Technical research + knowledge cache | BMM Architect (Winston) |
+| Sprint Slave | Batch-level Story orchestration (V2) | BSO Native |
+| Scrum Master | Sprint planning, batch grouping, course correction (V2) | BSO Native |
+| Debugger | Bug analysis, logging, fix routing (V2) | BSO Native |
+| E2E Live | Real-time browser assistant, stateless service (V2) | BSO Native |
 
 ### Commands (1)
 
 **auto-dev-sprint** — 主入口命令，统一调度所有 Agent 和 Workflow
 
-### Workflows (14)
+### Workflows (16)
 
-**Core (4):** story-creation, story-review, dev-execution, code-review
+**Core (5):** story-creation, story-review, dev-execution, code-review, slave-orchestration
 
-**Feature (4):** knowledge-research, e2e-inspection, intent-parsing, interactive-guide
+**Feature (5):** knowledge-research, e2e-inspection, intent-parsing, interactive-guide, course-correction
 
 **Utility (6):** health-check, concurrency-control, precise-git-commit, status-validation, lessons-recording, lessons-injection
 
@@ -113,12 +117,12 @@ bso/
 ├── TODO.md                  # Implementation tracking
 ├── docs/                    # User documentation
 │   ├── getting-started.md   # Quick start guide
-│   ├── agents.md            # Agent reference (6 agents)
-│   ├── workflows.md         # Workflow reference (14 workflows)
+│   ├── agents.md            # Agent reference (10 agents)
+│   ├── workflows.md         # Workflow reference (16 workflows)
 │   └── examples.md          # Examples, tips & troubleshooting
-├── agents/                  # 6 Agent definitions + specs
+├── agents/                  # 10 Agent definitions + specs
 ├── commands/                # Main command (auto-dev-sprint) + spec
-├── workflows/               # 14 Workflow directories + specs
+├── workflows/               # 16 Workflow directories + specs
 └── _module-installer/       # Installation logic
 ```
 
@@ -126,8 +130,8 @@ bso/
 
 For detailed user guides and documentation, see the **[docs/](docs/)** folder:
 - [Getting Started](docs/getting-started.md) — Installation, first steps, common use cases
-- [Agents Reference](docs/agents.md) — Meet the 6 specialized agents
-- [Workflows Reference](docs/workflows.md) — All 14 workflows explained
+- [Agents Reference](docs/agents.md) — Meet the 10 specialized agents
+- [Workflows Reference](docs/workflows.md) — All 16 workflows explained
 - [Examples & Troubleshooting](docs/examples.md) — Real-world scenarios, tips, and fixes
 
 ## Author

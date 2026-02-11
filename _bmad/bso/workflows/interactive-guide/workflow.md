@@ -5,6 +5,7 @@ description: "No-argument interactive onboarding — guide users through sprint 
 module: bso
 agent: orchestrator
 version: 1.0.0
+type: feature
 created: 2026-02-07
 updated: 2026-02-07
 status: validated
@@ -12,7 +13,7 @@ status: validated
 
 # Interactive Guide Workflow (F4)
 
-> BSO Feature Workflow -- 当用户执行 `auto-dev-sprint` 命令时不带任何参数（或带 `--interactive` 标志），启动交互式引导流程，通过 7 步问答引导用户完成 Sprint 配置，最终输出与 F3 intent-parsing 完全一致的结构化执行参数。
+> BSO Feature Workflow -- 当用户执行 `auto-dev-sprint-team` 命令时不带任何参数（或带 `--interactive` 标志），启动交互式引导流程，通过 7 步问答引导用户完成 Sprint 配置，最终输出与 F3 intent-parsing 完全一致的结构化执行参数。
 
 ## Purpose
 
@@ -32,8 +33,8 @@ status: validated
 
 本 workflow 在以下任一条件满足时触发：
 
-1. 用户执行 `/bso:auto-dev-sprint` 命令且**不带任何参数**（F3 Step 1 分类为空输入，返回 `status: "redirected"`）
-2. 用户执行 `/bso:auto-dev-sprint --interactive` 显式请求交互模式（F3 Step 1 检测 `--interactive` 标志，返回 `status: "redirected"`）
+1. 用户执行 `/bso:auto-dev-sprint-team` 命令且**不带任何参数**（F3 Step 1 分类为空输入，返回 `status: "redirected"`）
+2. 用户执行 `/bso:auto-dev-sprint-team --interactive` 显式请求交互模式（F3 Step 1 检测 `--interactive` 标志，返回 `status: "redirected"`）
 
 ---
 

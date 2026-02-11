@@ -3,7 +3,7 @@
 **Module:** bso
 **Status:** Completed
 **Created:** 2026-02-07
-**Last Validated:** 2026-02-07
+**Last Validated:** 2026-02-11
 
 ---
 
@@ -49,6 +49,8 @@ Headless — no direct user interaction. All output written to Story .md files f
 - Lessons injection budget — inject at most 10 entries sorted by recency + relevance from `_lessons-learned.md`, filtered by `[story-creation]` phase tag (Principle 25)
 - Technical claim verification — when Story references specific API names, method signatures, or framework features, trigger Knowledge Researcher to verify existence before finalizing the document (Principle 27)
 - When uncertain about framework or API usage, trigger Knowledge Researcher rather than guessing — precision over speed
+- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"story-creator-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
 
 ---
 
@@ -62,12 +64,23 @@ Headless — no direct user interaction. All output written to Story .md files f
 
 ---
 
+## Result Delivery Protocol
+
+通过以下方式传递结果给 Orchestrator：
+
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="StoryCreator {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
+
+---
+
 ## Agent Modes
 
 | Mode | Input | Behavior |
 |------|-------|----------|
 | `create` | Epic definition + story_key | Full creation: read Epic -> extract Story requirements -> generate AC -> decompose tasks -> write Story .md -> commit |
-| `revise` | Story .md + reviewer feedback | Targeted revision: read feedback -> update AC/tasks -> re-validate completeness -> commit |
+| `revise` | Story .md + reviewer feedback | Targeted revision: read feedback -> update AC/tasks -> re-validate completeness -> commit. Orchestrator 会在 prompt 中注入上次会话的关键上下文（Epic 理解、设计思路、reviewer 反馈）作为替代 |
 
 ---
 
@@ -81,7 +94,25 @@ BSO agents are **headless** — they do not expose interactive menus. They are d
 
 ---
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (create or revise) | Return value JSON with status, story_file, completeness_checks |
+| RESEARCH_REQUEST | knowledge-researcher | Technical claim verification needed (Principle 27) | `{ story_key, requesting_agent: "story-creator-X-Y", queries[], context }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with story_key, mode, session_id, config_overrides, resident_contacts |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` — technical claim verification outcomes |
+
+---
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -90,6 +121,15 @@ session_id: "sprint-2026-02-07-001"
 epic_file_path: "path/to/epic-3.md"  # Epic definition file path (required for create mode)
 config_overrides:
   max_story_review_rounds: 3  # only relevant for revise loop context
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ---
@@ -128,8 +168,12 @@ config_overrides:
 3. Read Story .md file -> load current Story content
 4. Read reviewer feedback section -> identify required changes
 5. Read _lessons-learned.md -> filter by [story-creation] phase -> inject warnings (max 10, Principle 25)
-6. Apply revisions based on reviewer feedback
-7. Re-validate Story completeness (same checklist as create mode)
+6. Apply revisions based on reviewer feedback:
+   a. Update/add/remove AC as indicated
+   b. Adjust task decomposition and sequencing
+   c. Clarify ambiguous terms or references
+   d. Update file scope declarations if needed
+7. Re-validate Story completeness (same checklist as create mode step 7)
 8. Trigger Knowledge Researcher (F1) if feedback flags unverified technical claims (Principle 27)
 9. Overwrite Story .md file with revised content
 10. Execute precise-git-commit (U3) with sensitive file check
@@ -200,6 +244,18 @@ If any check fails:
 
 ---
 
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending changes exist
+3. Compose return value with final status (create or revise mode result)
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
+
+---
+
 ## Return Value Schema
 
 ```yaml
@@ -235,4 +291,4 @@ errors: []
 
 ---
 
-_Spec validated on 2026-02-07 — matches completed agent implementation_
+_Spec validated on 2026-02-11 — matches completed agent implementation_

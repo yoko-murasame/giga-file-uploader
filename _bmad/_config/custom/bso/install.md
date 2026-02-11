@@ -73,13 +73,13 @@ BMM 必须提供以下 Workflow（供 BSO 的 `workflow_mapping` 引用）：
 
 | 组件类型 | 数量 | 说明 |
 |---------|------|------|
-| Agents | 6 | Story Creator, Story Reviewer, Dev Runner, Review Runner, E2E Inspector, Knowledge Researcher |
-| Core Workflows | 4 | story-creation, story-review, dev-execution, code-review |
-| Feature Workflows | 4 | knowledge-research, e2e-inspection, intent-parsing, interactive-guide |
+| Agents | 10 | Story Creator, Story Reviewer, Dev Runner, Review Runner, E2E Inspector, Knowledge Researcher, Sprint Slave, Scrum Master, Debugger, E2E Live |
+| Core Workflows | 5 | story-creation, story-review, dev-execution, code-review, slave-orchestration |
+| Feature Workflows | 5 | knowledge-research, e2e-inspection, intent-parsing, interactive-guide, course-correction |
 | Utility Workflows | 6 | health-check, concurrency-control, precise-git-commit, status-validation, lessons-recording, lessons-injection |
-| Commands | 2 | auto-dev-sprint (C1, Fire-and-Forget), auto-dev-sprint-team (C1-TEAM, Agent Team) |
+| Commands | 1 | auto-dev-sprint-team (Agent Team mode) |
 | Config | 1 | config.yaml（用户可自定义配置） |
-| **总计** | **23** | 6 + 14 + 2 + 1 |
+| **总计** | **28** | 10 + 16 + 1 + 1 |
 
 ### 状态机架构
 
@@ -90,7 +90,7 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
            story-doc-improved                   [fix loop]
 ```
 
-7 个状态，6 个专用 Agent，通过 Orchestrator 命令统一调度。
+7 个状态，10 个专用 Agent（含 4 个 V2 新增），通过 Orchestrator 命令统一调度。
 
 ---
 
@@ -140,10 +140,12 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 │   │   ├── story-review/
 │   │   ├── dev-execution/
 │   │   ├── code-review/
+│   │   ├── slave-orchestration/
 │   │   ├── knowledge-research/
 │   │   ├── e2e-inspection/
 │   │   ├── intent-parsing/
 │   │   ├── interactive-guide/
+│   │   ├── course-correction/
 │   │   ├── health-check/
 │   │   ├── concurrency-control/
 │   │   ├── precise-git-commit/
@@ -166,7 +168,7 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 
 ### Step 3: Agent Installation（Agent 安装）
 
-将 6 个 Agent 文件从源目录复制到目标位置。每个 Agent 需要安装到两个位置：
+将 10 个 Agent 文件从源目录复制到目标位置。每个 Agent 需要安装到两个位置：
 
 1. **模块存储位置**：`_bmad/bso/agents/` — 源文件存档
 2. **激活位置**：`.claude/agents/` — Claude Code 可识别的激活路径（文件名添加 `bso-` 前缀）
@@ -179,26 +181,30 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 | A4 | Review Runner | `src/modules/bso/agents/review-runner.md` | `.claude/agents/bso-review-runner.md` |
 | A5 | E2E Inspector | `src/modules/bso/agents/e2e-inspector.md` | `.claude/agents/bso-e2e-inspector.md` |
 | A6 | Knowledge Researcher | `src/modules/bso/agents/knowledge-researcher.md` | `.claude/agents/bso-knowledge-researcher.md` |
+| A7 | Sprint Slave | `agents/sprint-slave.md` | `.claude/agents/bso-sprint-slave.md` |
+| A8 | Scrum Master | `agents/scrum-master.md` | `.claude/agents/bso-scrum-master.md` |
+| A9 | Debugger | `agents/debugger.md` | `.claude/agents/bso-debugger.md` |
+| A10 | E2E Live | `agents/e2e-live.md` | `.claude/agents/bso-e2e-live.md` |
 
 ```
 安装流程：
 
-对于每个 Agent 文件（A1-A6）：
+对于每个 Agent 文件（A1-A10）：
   1. 从模块源目录读取 Agent 文件
   2. 复制到 _bmad/bso/agents/{filename}（源文件存档）
   3. 复制到 .claude/agents/bso-{filename}（添加 bso- 前缀）
   4. 验证目标文件存在且内容完整
 
 验证：
-  → 确认 _bmad/bso/agents/ 下有 6 个 .md 文件
-  → 确认 .claude/agents/ 下有 6 个 bso-*.md 文件
+  → 确认 _bmad/bso/agents/ 下有 10 个 .md 文件
+  → 确认 .claude/agents/ 下有 10 个 bso-*.md 文件
 ```
 
 ### Step 4: Workflow Installation（Workflow 安装）
 
-将 14 个 Workflow 文件从源目录复制到模块目录。Workflow 按照功能分为三类。
+将 16 个 Workflow 文件从源目录复制到模块目录。Workflow 按照功能分为三类。
 
-#### Core Workflows（核心工作流 - 4 个）
+#### Core Workflows（核心工作流 - 5 个）
 
 | # | Workflow | 源路径 | 安装路径 |
 |---|---------|--------|---------|
@@ -206,8 +212,9 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 | C2 | story-review | `src/modules/bso/workflows/story-review/workflow.md` | `_bmad/bso/workflows/story-review/workflow.md` |
 | C3 | dev-execution | `src/modules/bso/workflows/dev-execution/workflow.md` | `_bmad/bso/workflows/dev-execution/workflow.md` |
 | C4 | code-review | `src/modules/bso/workflows/code-review/workflow.md` | `_bmad/bso/workflows/code-review/workflow.md` |
+| C5 | slave-orchestration | `src/modules/bso/workflows/slave-orchestration/workflow.md` | `_bmad/bso/workflows/slave-orchestration/workflow.md` |
 
-#### Feature Workflows（功能工作流 - 4 个）
+#### Feature Workflows（功能工作流 - 5 个）
 
 | # | Workflow | 源路径 | 安装路径 |
 |---|---------|--------|---------|
@@ -215,6 +222,7 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 | F2 | e2e-inspection | `src/modules/bso/workflows/e2e-inspection/workflow.md` | `_bmad/bso/workflows/e2e-inspection/workflow.md` |
 | F3 | intent-parsing | `src/modules/bso/workflows/intent-parsing/workflow.md` | `_bmad/bso/workflows/intent-parsing/workflow.md` |
 | F4 | interactive-guide | `src/modules/bso/workflows/interactive-guide/workflow.md` | `_bmad/bso/workflows/interactive-guide/workflow.md` |
+| F5 | course-correction | `src/modules/bso/workflows/course-correction/workflow.md` | `_bmad/bso/workflows/course-correction/workflow.md` |
 
 #### Utility Workflows（工具工作流 - 6 个）
 
@@ -230,16 +238,16 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 ```
 安装流程：
 
-对于每个 Workflow（C1-C4, F1-F4, U1-U6）：
+对于每个 Workflow（C1-C5, F1-F5, U1-U6）：
   1. 确认目标子目录已创建（Step 2）
   2. 从模块源目录读取 workflow.md
   3. 复制到 _bmad/bso/workflows/{workflow-name}/workflow.md
   4. 验证目标文件存在且内容完整
 
 验证：
-  → 确认 _bmad/bso/workflows/ 下有 14 个子目录
+  → 确认 _bmad/bso/workflows/ 下有 16 个子目录
   → 每个子目录包含 workflow.md 文件
-  → Core: 4 个 | Feature: 4 个 | Utility: 6 个
+  → Core: 5 个 | Feature: 5 个 | Utility: 6 个
 ```
 
 ### Step 5: Command Installation（命令安装）
@@ -248,13 +256,12 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
 
 | # | Command 文件 | 源路径 | 安装路径 |
 |---|-------------|--------|---------|
-| CMD1 | auto-dev-sprint | `src/modules/bso/commands/auto-dev-sprint.md` | `.claude/commands/bso/auto-dev-sprint.md` |
-| CMD2 | auto-dev-sprint-team | `src/modules/bso/commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
+| CMD1 | auto-dev-sprint-team | `src/modules/bso/commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
 
 ```
 安装流程：
 
-对于每个 Command 文件（CMD1-CMD2）：
+对于每个 Command 文件（CMD1）：
   1. 确认 .claude/commands/bso/ 目录已创建（Step 2）
   2. 从模块源目录读取对应 .md 文件
   3. 复制到 .claude/commands/bso/{filename}
@@ -262,8 +269,7 @@ backlog --> story-doc-review --> ready-for-dev --> review --> e2e-verify --> don
   5. 验证目标文件存在且内容完整
 
 安装后用户可通过以下方式调用：
-  /bso:auto-dev-sprint <epic-spec> [options]           # Fire-and-Forget 模式 (C1)
-  /bso:auto-dev-sprint-team <epic-spec> [options]      # Agent Team 模式 (C1-TEAM)
+  /bso:auto-dev-sprint-team <epic-spec> [options]      # Agent Team 模式
 ```
 
 ### Step 6: Configuration Initialization（配置初始化）
@@ -391,8 +397,8 @@ archived_entries: []
 健康检查项目：
 
 [文件完整性]
-  → 检查 6 个 Agent 文件存在于 .claude/agents/
-  → 检查 14 个 Workflow 文件存在于 _bmad/bso/workflows/
+  → 检查 10 个 Agent 文件存在于 .claude/agents/
+  → 检查 16 个 Workflow 文件存在于 _bmad/bso/workflows/
   → 检查 1 个 Command 文件存在于 .claude/commands/bso/
   → 检查 config.yaml 存在于 _bmad/bso/
   → 检查 module.yaml 存在于 _bmad/bso/
@@ -439,7 +445,7 @@ archived_entries: []
 用户也可以在安装后随时通过以下命令手动触发健康检查：
 
 ```
-/bso:auto-dev-sprint --check
+/bso:auto-dev-sprint-team --check
 ```
 
 ---
@@ -553,12 +559,12 @@ archived_entries: []
 
 ## File Manifest（完整文件清单）
 
-以下是 BSO 模块安装涉及的全部 22 个文件（21 个可执行组件 + 1 个配置文件），标注源路径和安装路径。
+以下是 BSO 模块安装涉及的全部 28 个文件（27 个可执行组件 + 1 个配置文件），标注源路径和安装路径。
 
 > 源路径基准：`_bmad-output/bmb-creations/src/modules/bso/`
 > 安装路径基准：`{project-root}/`
 
-### Agents（6 个）
+### Agents（10 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
@@ -568,48 +574,53 @@ archived_entries: []
 | 4 | Review Runner | `agents/review-runner.md` | `.claude/agents/bso-review-runner.md` |
 | 5 | E2E Inspector | `agents/e2e-inspector.md` | `.claude/agents/bso-e2e-inspector.md` |
 | 6 | Knowledge Researcher | `agents/knowledge-researcher.md` | `.claude/agents/bso-knowledge-researcher.md` |
+| 7 | Sprint Slave | `agents/sprint-slave.md` | `.claude/agents/bso-sprint-slave.md` |
+| 8 | Scrum Master | `agents/scrum-master.md` | `.claude/agents/bso-scrum-master.md` |
+| 9 | Debugger | `agents/debugger.md` | `.claude/agents/bso-debugger.md` |
+| 10 | E2E Live | `agents/e2e-live.md` | `.claude/agents/bso-e2e-live.md` |
 
-### Core Workflows（4 个）
-
-| # | 文件 | 源路径 | 安装路径 |
-|---|------|--------|---------|
-| 7 | story-creation | `workflows/story-creation/workflow.md` | `_bmad/bso/workflows/story-creation/workflow.md` |
-| 8 | story-review | `workflows/story-review/workflow.md` | `_bmad/bso/workflows/story-review/workflow.md` |
-| 9 | dev-execution | `workflows/dev-execution/workflow.md` | `_bmad/bso/workflows/dev-execution/workflow.md` |
-| 10 | code-review | `workflows/code-review/workflow.md` | `_bmad/bso/workflows/code-review/workflow.md` |
-
-### Feature Workflows（4 个）
+### Core Workflows（5 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
-| 11 | knowledge-research | `workflows/knowledge-research/workflow.md` | `_bmad/bso/workflows/knowledge-research/workflow.md` |
-| 12 | e2e-inspection | `workflows/e2e-inspection/workflow.md` | `_bmad/bso/workflows/e2e-inspection/workflow.md` |
-| 13 | intent-parsing | `workflows/intent-parsing/workflow.md` | `_bmad/bso/workflows/intent-parsing/workflow.md` |
-| 14 | interactive-guide | `workflows/interactive-guide/workflow.md` | `_bmad/bso/workflows/interactive-guide/workflow.md` |
+| 11 | story-creation | `workflows/story-creation/workflow.md` | `_bmad/bso/workflows/story-creation/workflow.md` |
+| 12 | story-review | `workflows/story-review/workflow.md` | `_bmad/bso/workflows/story-review/workflow.md` |
+| 13 | dev-execution | `workflows/dev-execution/workflow.md` | `_bmad/bso/workflows/dev-execution/workflow.md` |
+| 14 | code-review | `workflows/code-review/workflow.md` | `_bmad/bso/workflows/code-review/workflow.md` |
+| 15 | slave-orchestration | `workflows/slave-orchestration/workflow.md` | `_bmad/bso/workflows/slave-orchestration/workflow.md` |
+
+### Feature Workflows（5 个）
+
+| # | 文件 | 源路径 | 安装路径 |
+|---|------|--------|---------|
+| 16 | knowledge-research | `workflows/knowledge-research/workflow.md` | `_bmad/bso/workflows/knowledge-research/workflow.md` |
+| 17 | e2e-inspection | `workflows/e2e-inspection/workflow.md` | `_bmad/bso/workflows/e2e-inspection/workflow.md` |
+| 18 | intent-parsing | `workflows/intent-parsing/workflow.md` | `_bmad/bso/workflows/intent-parsing/workflow.md` |
+| 19 | interactive-guide | `workflows/interactive-guide/workflow.md` | `_bmad/bso/workflows/interactive-guide/workflow.md` |
+| 20 | course-correction | `workflows/course-correction/workflow.md` | `_bmad/bso/workflows/course-correction/workflow.md` |
 
 ### Utility Workflows（6 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
-| 15 | health-check | `workflows/health-check/workflow.md` | `_bmad/bso/workflows/health-check/workflow.md` |
-| 16 | concurrency-control | `workflows/concurrency-control/workflow.md` | `_bmad/bso/workflows/concurrency-control/workflow.md` |
-| 17 | precise-git-commit | `workflows/precise-git-commit/workflow.md` | `_bmad/bso/workflows/precise-git-commit/workflow.md` |
-| 18 | status-validation | `workflows/status-validation/workflow.md` | `_bmad/bso/workflows/status-validation/workflow.md` |
-| 19 | lessons-recording | `workflows/lessons-recording/workflow.md` | `_bmad/bso/workflows/lessons-recording/workflow.md` |
-| 20 | lessons-injection | `workflows/lessons-injection/workflow.md` | `_bmad/bso/workflows/lessons-injection/workflow.md` |
+| 21 | health-check | `workflows/health-check/workflow.md` | `_bmad/bso/workflows/health-check/workflow.md` |
+| 22 | concurrency-control | `workflows/concurrency-control/workflow.md` | `_bmad/bso/workflows/concurrency-control/workflow.md` |
+| 23 | precise-git-commit | `workflows/precise-git-commit/workflow.md` | `_bmad/bso/workflows/precise-git-commit/workflow.md` |
+| 24 | status-validation | `workflows/status-validation/workflow.md` | `_bmad/bso/workflows/status-validation/workflow.md` |
+| 25 | lessons-recording | `workflows/lessons-recording/workflow.md` | `_bmad/bso/workflows/lessons-recording/workflow.md` |
+| 26 | lessons-injection | `workflows/lessons-injection/workflow.md` | `_bmad/bso/workflows/lessons-injection/workflow.md` |
 
-### Command（2 个）
+### Command（1 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
-| 21 | auto-dev-sprint | `commands/auto-dev-sprint.md` | `.claude/commands/bso/auto-dev-sprint.md` |
-| 22 | auto-dev-sprint-team | `commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
+| 27 | auto-dev-sprint-team | `commands/auto-dev-sprint-team.md` | `.claude/commands/bso/auto-dev-sprint-team.md` |
 
 ### Configuration（1 个）
 
 | # | 文件 | 源路径 | 安装路径 |
 |---|------|--------|---------|
-| 23 | config.yaml | `config.yaml` | `_bmad/bso/config.yaml` |
+| 28 | config.yaml | `config.yaml` | `_bmad/bso/config.yaml` |
 
 ---
 
@@ -620,7 +631,7 @@ archived_entries: []
 ### 1. 环境确认
 
 ```
-/bso:auto-dev-sprint --check
+/bso:auto-dev-sprint-team --check
 ```
 
 确认所有必需组件显示绿色（通过）。
@@ -636,7 +647,7 @@ archived_entries: []
 ### 3. 首次运行（推荐使用交互引导模式）
 
 ```
-/bso:auto-dev-sprint
+/bso:auto-dev-sprint-team
 ```
 
 不带任何参数运行，BSO 将启动交互式引导（Interactive Guide），逐步引导你选择：
@@ -649,7 +660,7 @@ archived_entries: []
 ### 4. 日常使用（自然语言模式）
 
 ```
-/bso:auto-dev-sprint 把 epic5 没完成的都跑了，严格审查
+/bso:auto-dev-sprint-team 把 epic5 没完成的都跑了，严格审查
 ```
 
 BSO 解析自然语言意图，确认参数后自动执行。
@@ -657,13 +668,13 @@ BSO 解析自然语言意图，确认参数后自动执行。
 ### 5. 精确参数模式（高级用户）
 
 ```
-/bso:auto-dev-sprint epic3 --parallel 2 --review-strictness strict --max-review-rounds 5
+/bso:auto-dev-sprint-team epic3 --parallel 2 --review-strictness strict --max-review-rounds 5
 ```
 
 ### 6. 仅干运行（预览模式）
 
 ```
-/bso:auto-dev-sprint epic3 --dry-run
+/bso:auto-dev-sprint-team epic3 --dry-run
 ```
 
 预览执行队列而不实际运行。
@@ -790,13 +801,16 @@ Sprint 完成后，检查以下位置：
   .claude/agents/bso-review-runner.md
   .claude/agents/bso-e2e-inspector.md
   .claude/agents/bso-knowledge-researcher.md
+  .claude/agents/bso-sprint-slave.md
+  .claude/agents/bso-scrum-master.md
+  .claude/agents/bso-debugger.md
+  .claude/agents/bso-e2e-live.md
 ```
 
 ### Step 3: 移除 Command 文件
 
 ```
 删除以下文件和目录：
-  .claude/commands/bso/auto-dev-sprint.md
   .claude/commands/bso/auto-dev-sprint-team.md
   .claude/commands/bso/                     （若目录为空则删除）
 ```
@@ -849,12 +863,11 @@ Sprint 完成后，检查以下位置：
 - [ ] Step 1: BMAD Core 已安装且可用
 - [ ] Step 1: BMM Module >= 1.0.0 已安装且 Agent/Workflow 可用
 - [ ] Step 2: 所有目录结构已创建
-- [ ] Step 3: 6 个 Agent 文件已安装到 `.claude/agents/`（bso- 前缀）
-- [ ] Step 3: 6 个 Agent 文件已备份到 `_bmad/bso/agents/`
-- [ ] Step 4: 4 个 Core Workflow 已安装
-- [ ] Step 4: 4 个 Feature Workflow 已安装
+- [ ] Step 3: 10 个 Agent 文件已安装到 `.claude/agents/`（bso- 前缀）
+- [ ] Step 3: 10 个 Agent 文件已备份到 `_bmad/bso/agents/`
+- [ ] Step 4: 5 个 Core Workflow 已安装
+- [ ] Step 4: 5 个 Feature Workflow 已安装
 - [ ] Step 4: 6 个 Utility Workflow 已安装
-- [ ] Step 5: auto-dev-sprint.md 已安装到 `.claude/commands/bso/`
 - [ ] Step 5: auto-dev-sprint-team.md 已安装到 `.claude/commands/bso/`
 - [ ] Step 6: config.yaml 已生成且用户变量已填充
 - [ ] Step 6: module.yaml 已复制到 `_bmad/bso/`

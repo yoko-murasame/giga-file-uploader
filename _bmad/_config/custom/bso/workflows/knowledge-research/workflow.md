@@ -3,7 +3,8 @@ name: knowledge-research
 id: F1
 description: "Multi-source technical research with intelligent caching, version-aware invalidation, LRU capacity management, and phase-filtered lessons injection"
 module: bso
-agent: knowledge-researcher
+agent: bso-knowledge-researcher
+type: feature
 version: 1.0.0
 created: 2026-02-07
 updated: 2026-02-07

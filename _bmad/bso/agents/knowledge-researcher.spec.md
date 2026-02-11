@@ -48,6 +48,7 @@ Headless — no direct user interaction. Output is research report markdown file
 - Knowledge capacity management: index upper limit 200 entries, LRU eviction to `_archived-index.yaml`, version-aware invalidation on framework major version change, 60-day auto-archive (Principle 16)
 - Lessons injection budget: max 10 entries per phase injection, sorted by recency + relevance — prevents prompt token bloat when lessons accumulate (Principle 25)
 - Report confidence honestly: distinguish between "verified via official docs" vs "inferred from community examples" vs "partial coverage only"
+- **Git Exit Gate (Principle 32)** — KR 写入 knowledge-base/frameworks/ 的研究报告文件属于项目文件变更，在返回状态给调用方之前，应执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查
 
 ---
 
@@ -58,6 +59,19 @@ Headless — no direct user interaction. Output is research report markdown file
 3. Do not validate specific activation signals
 4. Validate via Skill call return value instead
 5. Persona knowledge and principles are injected into context without triggering interactive behavior
+
+---
+
+## Persistent Residence Protocol (P40)
+
+KR is a **resident agent** — it persists for the entire Sprint session.
+
+1. After initialization and persona loading, enter idle state
+2. Listen for RESEARCH_REQUEST messages via SendMessage protocol
+3. Process each request independently (stateless per-request, but cache is persistent)
+4. Send RESEARCH_RESULT back to requesting agent via SendMessage
+5. Return to idle — wait for next request or shutdown
+6. AGENT_ROSTER_BROADCAST: acknowledge and log roster updates, no action required
 
 ---
 
@@ -74,12 +88,30 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 
 ---
 
+## Team Communication Protocol
+
+### Messages KR Receives
+
+| Message Type | Direction | Content |
+|---|---|---|
+| RESEARCH_REQUEST | Any Agent -> KR | `{ story_key, requesting_agent, queries[], context }` |
+| AGENT_ROSTER_BROADCAST | Master -> KR | `{ residents, slaves, temps }` |
+
+### Messages KR Sends
+
+| Message Type | Direction | Content |
+|---|---|---|
+| RESEARCH_RESULT | KR -> Requester | `{ results[], cache_hits, errors[] }` |
+
+---
+
 ## Modes
 
 | Mode | Input | Behavior |
 |------|-------|----------|
 | `research` | Technical question + framework context | Cache check → Context7 → DeepWiki → WebSearch → generate report → update index |
 | `lessons-inject` | Phase tag (e.g., `dev-execution`) | Read `_lessons-learned.md` → filter by phase → sort by recency → select top 10 → format and inject |
+| `team-resident` | Team member identity | Persistent idle → receive RESEARCH_REQUEST via SendMessage → execute research → SendMessage result back → return to idle |
 
 ---
 
@@ -133,7 +165,8 @@ config_overrides:
 7. Write report to knowledge-base/frameworks/{framework}/{topic}.md
 8. Update index.yaml — add/update entry with fresh status
 9. Run LRU capacity check — if entries > 200, archive oldest-accessed
-10. Return status + report path to caller
+10. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) for knowledge-base file changes
+11. Return status + report path to caller
 ```
 
 **State transition:** None — service agent, no lifecycle state changes
@@ -248,6 +281,18 @@ Every entry in `index.yaml` must conform to this schema:
 - **Consumes:** BMM architect knowledge via Skill call (headless)
 - **Triggered by:** Any BSO agent on-demand, Orchestrator at agent startup (lessons injection)
 - **State transitions:** None — Knowledge Researcher is a service agent, not a lifecycle agent
+
+---
+
+## Shutdown Protocol
+
+When receiving `shutdown_request`:
+
+1. Complete any in-progress research operation (do not abandon mid-research)
+2. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending knowledge-base file changes exist
+3. Log: `[KR] Shutdown acknowledged, {N} research requests served, {M} cache hits`
+4. Send `shutdown_response: approve`
+5. Exit
 
 ---
 

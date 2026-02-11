@@ -1,3 +1,16 @@
+---
+name: story-review
+id: C3
+description: "C3: Review Story quality + verify technical feasibility + API existence verification"
+module: bso
+agent: bso-story-reviewer
+type: core
+version: 1.1.1
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: story-review
 
 **Module:** bso

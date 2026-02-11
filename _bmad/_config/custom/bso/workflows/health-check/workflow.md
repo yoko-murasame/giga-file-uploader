@@ -3,7 +3,8 @@ name: health-check
 id: U1
 description: "Comprehensive environment verification before sprint execution — validates all dependencies, tools, configurations, and knowledge cache freshness"
 module: bso
-agent: orchestrator
+agent: bso-orchestrator
+type: utility
 version: 1.1.0
 created: 2026-02-07
 updated: 2026-02-07
@@ -16,19 +17,19 @@ status: validated
 
 ## Purpose
 
-在 Sprint 开始前系统性验证执行环境的完整性和可用性。Health Check 是 Sprint 的「安全门」-- 只有通过检查（或明确确认警告）后才能启动 Sprint 执行。支持 10 项检查，每项独立返回 `pass` / `warn` / `fail` 状态，最终汇总为整体健康状态。
+在 Sprint 开始前系统性验证执行环境的完整性和可用性。Health Check 是 Sprint 的「安全门」-- 只有通过检查（或明确确认警告）后才能启动 Sprint 执行。支持 10 项检查，每项独立返回 `pass` / `warn` / `fail` / `skip` 状态，最终汇总为整体健康状态。
 
 ## Primary Agent
 
-**Orchestrator** -- 内联逻辑，直接在 Sprint Orchestrator 的 `auto-dev-sprint` 命令中执行，无需调度独立 Agent。
+**Orchestrator** -- 内联逻辑，直接在 Sprint Orchestrator 的 `auto-dev-sprint-team` 命令中执行，无需调度独立 Agent。
 
 ## Callers
 
 | Caller | 触发场景 | 调用方式 |
 |--------|---------|---------|
-| auto-dev-sprint (C1) | 用户传入 `--check` 标志 | 直接调用，执行后终止（仅报告） |
-| auto-dev-sprint (C1) | Sprint 正式启动前 | 自动调用，unhealthy 时阻止 Sprint 启动 |
-| 用户手动 | 环境配置变更后验证 | `/bso:auto-dev-sprint --check` |
+| auto-dev-sprint-team | 用户传入 `--check` 标志 | 直接调用，执行后终止（仅报告） |
+| auto-dev-sprint-team | Sprint 正式启动前 | 自动调用，unhealthy 时阻止 Sprint 启动 |
+| 用户手动 | 环境配置变更后验证 | `/bso:auto-dev-sprint-team --check` |
 
 ---
 
@@ -494,7 +495,7 @@ status_file_search_paths
 ## Workflow Sequence Diagram
 
 ```
-User / Orchestrator (C1)                   Health Check (U1)
+User / Orchestrator                        Health Check (U1)
     |                                           |
     |--- --check / auto-start ----------------->|
     |                                           |

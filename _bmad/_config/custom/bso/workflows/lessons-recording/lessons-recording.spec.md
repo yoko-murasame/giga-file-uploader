@@ -1,3 +1,16 @@
+---
+name: lessons-recording
+id: U5
+description: "Capture error events from agent execution, distill into actionable lessons, and append to _lessons-learned.md"
+module: bso
+type: utility
+agent: orchestrator
+version: 1.1.0
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: lessons-recording
 
 **Module:** bso
@@ -23,7 +36,7 @@
 
 | Step | Name | Goal |
 |------|------|------|
-| 1 | Event Detection | Identify error event type(s) from agent return value against 6 trigger conditions |
+| 1 | Event Detection | Identify error event type(s) from agent return value against 7 trigger conditions |
 | 2 | Context Extraction | Extract relevant code paths, framework names, error details from agent return |
 | 3 | Distillation | Compress error context to <= 2 line actionable summary with phase tag |
 | 4 | Duplicate Detection | Fuzzy match against existing `_lessons-learned.md` entries to avoid redundancy |
@@ -32,7 +45,7 @@
 
 ---
 
-## Trigger Conditions (6 Error Event Types)
+## Trigger Conditions (7 Error Event Types)
 
 | # | Event Type ID | Trigger Condition | Phase Tag |
 |---|--------------|-------------------|-----------|
@@ -42,6 +55,7 @@
 | 4 | `agent_needs_intervention` | Agent marked `needs-intervention` | current phase |
 | 5 | `knowledge_researcher_timeout` | Knowledge Researcher call timed out | current phase |
 | 6 | `e2e_verification_failure` | E2E browser verification failed | `e2e-inspection` |
+| 7 | `general_agent_failure` | Any Agent returns failure or needs-intervention (fallback, not matching 1-6) | current phase |
 
 > Single agent return matches at most 3 events (priority order, truncate with warning).
 
@@ -54,7 +68,7 @@
 - `session_id`: Sprint session tracking ID (non-empty string)
 - `story_key`: Story identifier that triggered the error (format: `\d+-\d+`)
 - `phase`: Phase where the error occurred (valid phase tag)
-- `event_type`: Error event type (one of 6 trigger condition IDs)
+- `event_type`: Error event type (one of 7 trigger condition IDs)
 - `agent_return`: Agent raw return value (non-empty object with `status` field)
 
 ### Optional Inputs
@@ -70,7 +84,7 @@
 | `session_id` | Non-empty string | skip recording, log warning |
 | `story_key` | Format `\d+-\d+` | skip recording, log warning |
 | `phase` | Valid phase tag | skip recording, log warning |
-| `event_type` | One of 6 trigger condition IDs | skip recording, log warning |
+| `event_type` | One of 7 trigger condition IDs | skip recording, log warning |
 | `agent_return` | Non-empty object with `status` field | skip recording, log warning |
 
 > **Note:** Input validation failure uses skip strategy (not abort) -- recording failure must never affect Sprint main flow (Principle 2: degrade over error).
@@ -139,7 +153,7 @@ Orchestrator (`bso-sprint-orchestrator`) -- this workflow executes as Orchestrat
 
 | Caller | Invocation Scenario | Frequency |
 |--------|-------------------|-----------|
-| Sprint Orchestrator (C1) | Inline call after agent error return | Per error event |
+| Sprint Orchestrator | Inline call after agent error return | Per error event |
 | Lessons Injection (U6) | Reads `_lessons-learned.md` produced by this workflow | Per agent startup |
 
 ---

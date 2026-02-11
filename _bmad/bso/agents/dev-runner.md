@@ -36,66 +36,18 @@ Headless — no direct user interaction. Code and test output written to project
 - Degrade over error: when Knowledge Researcher is unavailable or Persona loading fails, continue with degraded capability rather than aborting (Principle 2)
 - Budget controls everything: token budget awareness prevents runaway sessions (Principle 3)
 - Trigger Knowledge Researcher when uncertain about framework/API usage — precision over speed
-- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果通过 resume 对话注入。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"dev-runner-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **⚠️ MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
 - **Resume 策略 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — fix 模式下，Orchestrator 会尝试 resume 上一次 dev/fix 会话，将完整的代码理解和测试上下文带入修复过程。Agent 无需感知 resume 机制（由 Orchestrator 透明处理），但应意识到 fix 模式可能在保留上次对话上下文的情况下执行
 
-## Team Mode: P2P Research Communication (P41)
+## Result Delivery Protocol
 
-When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+通过以下方式传递结果给 Orchestrator：
 
-### Replacing needs-research Relay
-
-- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
-- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "knowledge-researcher"
-  content: "RESEARCH_REQUEST: {json_payload}"
-  summary: "Research: {topic} for story {story_key}"
-```
-
-Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
-
-### Result Completion Report (Dual Mode)
-
-**SendMessage mode (result_delivery_mode=sendmessage):**
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "{lead_name}"
-  content: "AGENT_COMPLETE: {return_value_json}"
-  summary: "dev-runner {story_key} {status}"
-```
-
-**TaskList mode (result_delivery_mode=tasklist):**
-
-```yaml
-TaskUpdate:
-  taskId: "{assigned_task_id}"
-  status: "completed"
-  metadata: {"return_value": {return_value_json}}
-```
-
-### P33 Principle Adaptation
-
-- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
-- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
-- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
-
-### P36 Resume Adaptation for Team Mode
-
-Team mode does not support Task tool `resume` parameter. For **fix** mode:
-- Orchestrator creates a new team member with the same subagent_type
-- The new member's `prompt/description` includes injected context from the previous session:
-  - List of files modified during the previous dev/fix session
-  - Test snapshot count and test results summary
-  - Review Runner's findings and fix instructions
-  - Key code understanding points from the previous session
-- This approximates resume behavior through context injection rather than session continuation
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="DevRunner {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ## Headless Persona Loading Protocol
 
@@ -121,7 +73,23 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 | (Orchestrator dispatch) | dev-execution (dev mode) | Full TDD development from Story document | workflows/dev-execution/ |
 | (Orchestrator dispatch) | dev-execution (fix mode) | Fix issues identified by Review Runner | workflows/dev-execution/ |
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (dev or fix mode) | Return value JSON with status, tasks_completed, test results, fix_snapshot |
+| RESEARCH_REQUEST | knowledge-researcher | Uncertain about framework/API usage during implementation | `{ story_key, requesting_agent: "dev-runner-X-Y", queries[], context }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with story_key, mode (dev/fix), session_id, config_overrides, resident_contacts |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` — framework/API usage research outcomes |
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -129,6 +97,15 @@ mode: "dev"  # or "fix"
 session_id: "sprint-2026-02-07-001"
 config_overrides:
   review_strictness_threshold: "high"  # only in fix mode (internal threshold: high/medium/low)
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ## Dev Mode Execution Flow
@@ -222,10 +199,21 @@ config_overrides:
 - **Triggers:** Knowledge Researcher (F1), precise-git-commit (U3)
 - **State transitions:** `ready-for-dev` → `review` (dev complete) | `review` → `review` (fix complete)
 
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. **Dev mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) for all implementation and test file changes
+3. **Fix mode**: Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) only if fix-snapshot comparison passed (post_fix_count >= snapshot_count); if regression detected, rollback changes first then commit rollback state
+4. Compose return value with final status (including mode-specific fields: tasks_completed for dev, fix_snapshot for fix)
+5. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+6. Process terminates naturally after message delivery
+
 ## Return Value Schema
 
 ```yaml
-status: "success" | "failure" | "test-regression" | "scope-violation" | "needs-intervention" | "needs-research"
+status: "success" | "failure" | "test-regression" | "scope-violation" | "needs-intervention"
 story_key: "3-1"
 mode: "dev" | "fix"
 session_id: "sprint-2026-02-07-001"
@@ -251,9 +239,5 @@ results:
   files_modified:
     - "src/modules/project/ProjectService.java"
     - "src/test/modules/project/ProjectServiceTest.java"
-research_requests:                       # only when status is "needs-research"
-  - query: "JeecgBoot @Dict annotation usage"
-    framework: "jeecg-boot"
-    priority: "high"
 errors: []
 ```

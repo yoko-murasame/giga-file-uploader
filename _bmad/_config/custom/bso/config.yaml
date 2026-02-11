@@ -27,6 +27,7 @@ defaults:
   story_review_enabled: true
   story_review_fallback: "ask_user"  # ask_user | force_pass | skip_story
   first_story_checkpoint: "pause"    # pause | report | skip
+  yolo: false                      # YOLO full-auto mode (silences all user interaction points)
 
   # Agent timeout recovery (Principle 15)
   agent_timeout_seconds:
@@ -107,16 +108,8 @@ status_file_search_paths:
   - "{output_folder}/implementation-artifacts/sprint-status.yaml"
   - "./sprint-status.yaml"
 
-# Research Relay Protocol (Orchestrator-Mediated)
-# Agent 无法直接调度 KR（子进程限制），通过主控中继实现
-research_relay:
-  max_requests_per_dispatch: 5   # 单次 Agent 返回 needs-research 最多携带的研究请求数
-  timeout_seconds: 300           # 单次 KR 调度超时（秒）
-  allow_recursive: true          # 允许 Agent 二次返回 needs-research（累计不超过 max_calls_per_story）
-
-# Agent Team Mode Configuration (C1-TEAM only)
-# C1-TEAM 使用 Claude Code Agent Team 架构，KR 常驻 + P2P 研究通信
-# 仅当用户选择 /bso:auto-dev-sprint-team 命令时生效
+# Agent Team Mode Configuration
+# 使用 Claude Code Agent Team 架构，KR 常驻 + P2P 研究通信
 team_mode:
   team_name_prefix: "bso-sprint"          # Team 名称前缀，完整名: {prefix}-{session_id}
   kr_startup_timeout: 30                  # KR 常驻队友创建后等待就绪超时(秒)
@@ -133,3 +126,85 @@ team_mode:
     agent_complete: "AGENT_COMPLETE"       # 临时 Agent → 主控: 任务完成报告
     research_request: "RESEARCH_REQUEST"   # 任意 Agent → KR: 研究请求
     research_result: "RESEARCH_RESULT"     # KR → 请求者: 研究结果
+
+# ============================================================
+# Resident Agent Slots — resident Agent pluggable configuration
+# Supports source_type: bso_agent | bmad_skill | custom
+# ============================================================
+resident_slots:
+  sm:
+    enabled: true
+    source_type: "bmad_skill"
+    agent_ref: "bmad:core:agents:bmad-master"
+    extends:
+      workflows:
+        - "bmad:bmm:workflows:correct-course"
+    team_member_name: "scrum-master"
+    subagent_type: "bso-scrum-master"
+    startup_timeout: 30
+    shutdown_timeout: 15
+    description: "Sprint planning, batch grouping, course correction (CC)"
+
+  kr:
+    enabled: true
+    source_type: "bso_agent"
+    agent_ref: "bso:agents:knowledge-researcher"
+    team_member_name: "knowledge-researcher"
+    subagent_type: "bso-knowledge-researcher"
+    startup_timeout: 30
+    shutdown_timeout: 15
+    description: "Technical research and knowledge cache"
+
+  debugger:
+    enabled: true
+    source_type: "bso_agent"
+    agent_ref: "bso:agents:debugger"
+    team_member_name: "debugger"
+    subagent_type: "bso-debugger"
+    startup_timeout: 30
+    shutdown_timeout: 15
+    description: "Bug analysis, logging, fix routing"
+    config:
+      journal_path: ".sprint-session/debug-journal.md"
+      on_context_full: "rebuild_with_journal"
+
+  e2e_live:
+    enabled: false
+    source_type: "bso_agent"
+    agent_ref: "bso:agents:e2e-live"
+    team_member_name: "e2e-live"
+    subagent_type: "bso-e2e-live"
+    startup_timeout: 45
+    shutdown_timeout: 15
+    description: "Real-time browser operation assistant"
+    requires:
+      browser_mcp: "chrome_mcp | playwright_mcp"
+
+  # User custom slot example
+  # custom_agent:
+  #   enabled: false
+  #   source_type: "custom"
+  #   agent_ref: ".claude/agents/my-agent.md"
+  #   team_member_name: "my-agent"
+  #   subagent_type: "my-agent"
+  #   startup_timeout: 30
+  #   shutdown_timeout: 15
+
+# ============================================================
+# Slave Configuration — Slave batch orchestration config
+# ============================================================
+slave_config:
+  batch_size: 3
+  max_concurrent_slaves: 1
+  subagent_type: "bso-sprint-slave"
+  auto_destroy_on_complete: true
+  slave_timeout_seconds: 5400
+
+# ============================================================
+# Startup Interaction — Master startup interaction enhancement
+# ============================================================
+startup_interaction:
+  status_file_confirm: true
+  default_status_path: "{output_folder}/implementation-artifacts/sprint-status.yaml"
+  show_resident_slots: true
+  show_batch_plan_preview: true

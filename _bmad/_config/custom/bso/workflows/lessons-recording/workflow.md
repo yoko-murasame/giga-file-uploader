@@ -3,6 +3,7 @@ name: lessons-recording
 id: U5
 description: "Capture error events from agent execution, distill into actionable lessons, and append to _lessons-learned.md"
 module: bso
+type: utility
 agent: orchestrator
 version: 1.1.0
 created: 2026-02-07
@@ -26,7 +27,7 @@ status: validated
 
 | Caller | 调用场景 | 频率 |
 |--------|---------|------|
-| Sprint Orchestrator (C1) | Agent 返回错误后内联调用 | 每次错误事件触发 |
+| Sprint Orchestrator | Agent 返回错误后内联调用 | 每次错误事件触发 |
 | Lessons Injection (U6) | 读取本 workflow 产出的 `_lessons-learned.md` | 每次 Agent 启动时 |
 
 ---

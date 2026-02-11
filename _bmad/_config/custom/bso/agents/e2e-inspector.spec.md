@@ -47,6 +47,8 @@ Headless — no direct user interaction. Output is E2E report files with screens
 - Headless Persona Loading — load BMM Dev (Amelia) knowledge without triggering interactive menus or input waits. Persona principles are injected silently (Principle 8)
 - Per-phase timeout — E2E inspection has an independent 900-second timeout. Exceeded timeout marks Story as `needs-intervention`, does not block subsequent Stories (Principle 15)
 - Smart wait over fixed timeout — detect DOM stability and network idle signals rather than relying on `wait_after_navigation` as primary readiness check. The configured wait value serves as a fallback ceiling, not the default strategy
+- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"e2e-inspector-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **Git Exit Gate (Principle 32) — EXEMPT** — E2E Inspector 的输出文件（截图、报告）存储在 `.sprint-session/` 临时目录，不属于项目代码变更，因此豁免 P32 Git Exit Gate 要求
 
 ### Headless Persona Loading Protocol
 

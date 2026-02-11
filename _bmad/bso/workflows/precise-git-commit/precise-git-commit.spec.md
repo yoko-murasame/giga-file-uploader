@@ -1,9 +1,12 @@
 ---
 name: precise-git-commit
 id: U3
+description: "Safe, precise git commits with per-file staging, sensitive file safeguard, configurable commit patterns, and post-Story squash support"
 module: bso
+agent: shared
+type: utility
 version: 1.1.0
-status: implemented
+status: validated
 created: 2026-02-07
 updated: 2026-02-07
 ---
@@ -145,7 +148,7 @@ Shared utility — no dedicated Agent. Called inline by multiple Agent workflows
 | Dev Runner (C4) | Development complete | `dev_complete` |
 | Review Runner (C5) | Code review report complete | `review_complete` |
 | Review Runner (C5) | Fix applied after review | `fix_complete` |
-| Orchestrator (C1) | Story reaches done, execute squash | `squash` |
+| Orchestrator | Story reaches done, execute squash | `squash` |
 
 ---
 

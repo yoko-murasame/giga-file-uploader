@@ -1,7 +1,10 @@
 ---
 name: health-check
 id: U1
+description: "Comprehensive environment verification before sprint execution — validates all dependencies, tools, configurations, and knowledge cache freshness"
 module: bso
+agent: bso-orchestrator
+type: utility
 version: 1.1.0
 status: validated
 created: 2026-02-07
@@ -47,9 +50,9 @@ updated: 2026-02-07
 
 | Caller | Trigger | Mode |
 |--------|---------|------|
-| auto-dev-sprint (C1) | `--check` flag | Direct call, report only then exit |
-| auto-dev-sprint (C1) | Sprint startup (pre-execution) | Auto call, unhealthy blocks Sprint |
-| User manual | Post-config change verification | `/bso:auto-dev-sprint --check` |
+| auto-dev-sprint-team | `--check` flag | Direct call, report only then exit |
+| auto-dev-sprint-team | Sprint startup (pre-execution) | Auto call, unhealthy blocks Sprint |
+| User manual | Post-config change verification | `/bso:auto-dev-sprint-team --check` |
 
 ---
 
@@ -114,7 +117,7 @@ return:
 
 ### Primary Agent
 
-Orchestrator (inline logic) — executes directly within `auto-dev-sprint` command, no independent Agent dispatch needed.
+Orchestrator (inline logic) — executes directly within `auto-dev-sprint-team` command, no independent Agent dispatch needed.
 
 ---
 

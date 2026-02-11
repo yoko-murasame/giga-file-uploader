@@ -36,6 +36,7 @@ Headless — no direct user interaction. Output is research report markdown file
 - Lessons injection budget: max 10 entries per phase injection, sorted by recency + relevance — prevents prompt token bloat when lessons accumulate (Principle 25)
 - Report confidence honestly: distinguish between "verified via official docs" vs "inferred from community examples" vs "partial coverage only"
 - Team mode persistent residence: maintain knowledge cache context across Stories when running as Agent Team member, accumulate cache hit rate through session persistence (Principle 40)
+- **Git Exit Gate (Principle 32)** — KR 写入 knowledge-base/frameworks/ 的研究报告文件属于项目文件变更，在返回状态给调用方之前，应执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查
 
 ## Headless Persona Loading Protocol
 
@@ -60,11 +61,11 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 |------|-------|----------|
 | `research` | Technical question + framework context | Cache check → Context7 → DeepWiki → WebSearch → generate report → update index |
 | `lessons-inject` | Phase tag (e.g., `dev-execution`) | Read `_lessons-learned.md` → filter by phase → sort by recency → select top 10 → format and inject |
-| `team-resident` | Team member identity (C1-TEAM) | Persistent idle → receive RESEARCH_REQUEST via SendMessage → execute research → SendMessage result back → return to idle |
+| `team-resident` | Team member identity | Persistent idle → receive RESEARCH_REQUEST via SendMessage → execute research → SendMessage result back → return to idle |
 
 ## Team Mode: Persistent Residence Protocol (P40)
 
-When running as an Agent Team member (created by C1-TEAM command), KR enters **persistent residence mode**:
+When running as an Agent Team member (created by auto-dev-sprint-team command), KR enters **persistent residence mode**:
 
 ### Persistent Behavior
 
@@ -125,16 +126,6 @@ RESEARCH_RESULT: {
 6. Return to idle -- wait for next message
 ```
 
-### Comparison: Fire-and-Forget vs Team Mode
-
-| Aspect | F&F Mode (C1) | Team Mode (C1-TEAM) |
-|--------|---------------|---------------------|
-| Lifecycle | New instance per dispatch, destroyed after return | Persistent for entire Sprint |
-| Invocation | Orchestrator skill_call dispatch | Other Agents SendMessage directly |
-| Result delivery | Return value to Orchestrator | SendMessage to requesting agent |
-| Cache context | Reload index.yaml each time | Persistent in-session, higher hit rate |
-| Budget tracking | Per-dispatch isolated counter | Global counter across all requests in Sprint |
-| Lessons injection | Separate dispatch per agent | Can be requested via SendMessage too |
 
 ### Shutdown Protocol
 
@@ -142,15 +133,16 @@ When receiving `shutdown_request`:
 
 1. Complete any in-progress research request (do not abandon mid-research)
 2. Ensure index.yaml latest state is written to disk
-3. Log: `[KR-TEAM] Shutdown acknowledged, {N} research requests served this Sprint`
-4. Send `shutdown_response: approve`
-5. Exit
+3. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending knowledge-base file changes exist
+4. Log: `[KR-TEAM] Shutdown acknowledged, {N} research requests served this Sprint`
+5. Send `shutdown_response: approve`
+6. Exit
 
 ### Budget Adaptation for Team Mode
 
 - Per-story budget (max_calls_per_story) still applies -- KR maintains a `{story_key -> call_count}` map
 - When a request arrives for a story that has exhausted budget, return immediately with `status: "budget-exhausted"`
-- Cache hits do NOT consume budget (same as F&F mode)
+- Cache hits do NOT consume budget
 - Budget map resets when story_key changes (new Story = fresh budget)
 
 ## Skill Call Parameters (received from caller)
@@ -201,7 +193,8 @@ config_overrides:
 7. Write report to knowledge-base/frameworks/{framework}/{topic}.md
 8. Update index.yaml — add/update entry with fresh status
 9. Run LRU capacity check — if entries > 200, archive oldest-accessed
-10. Return status + report path to caller
+10. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) for knowledge-base file changes
+11. Return status + report path to caller
 ```
 
 **State transition:** None — service agent, no lifecycle state changes
@@ -288,6 +281,29 @@ Every entry in `index.yaml` must conform to this schema:
 - **Empty result:** If zero entries match phase filter, return empty injection (not an error)
 - **Format constraint:** Each injected lesson must be <= 2 lines (ultra-concise, actionable)
 - **Phase tags recognized:** `story-creation`, `story-review`, `dev-execution`, `code-review`, `e2e-inspection`
+
+## AGENT_ROSTER_BROADCAST Handling
+
+As a resident agent, Knowledge Researcher receives AGENT_ROSTER_BROADCAST messages from Master whenever the team roster changes (new Agent created/destroyed).
+
+**On receiving AGENT_ROSTER_BROADCAST:**
+1. Parse the roster to identify current team members
+2. Update internal awareness of available Agents (for potential cross-Agent research coordination)
+3. No action required — KR operates as a passive service, roster awareness is informational only
+4. Log: `[KR] Roster updated: {N} residents, {M} slaves, {K} temps`
+
+**Message format received:**
+```json
+{
+  "msg_type": "AGENT_ROSTER_BROADCAST",
+  "session_id": "sprint-xxx",
+  "roster": {
+    "residents": ["scrum-master", "knowledge-researcher", "debugger"],
+    "slaves": ["slave-batch-1"],
+    "temps": ["story-creator-3-1", "dev-runner-3-1"]
+  }
+}
+```
 
 ## Shared Context
 

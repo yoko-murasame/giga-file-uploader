@@ -4,6 +4,7 @@ id: C5
 description: "C5: Adversarial code review with progressive degradation and strictness-based decision"
 module: bso
 agent: bso-review-runner
+type: core
 version: 1.1.0
 created: 2026-02-07
 updated: 2026-02-07

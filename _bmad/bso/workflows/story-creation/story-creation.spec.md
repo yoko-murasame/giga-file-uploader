@@ -1,3 +1,16 @@
+---
+name: story-creation
+id: C2
+description: "C2: Create Story document from Epic definition with complete AC, tasks, subtasks, file scope, and technical references"
+module: bso
+agent: bso-story-creator
+version: 1.1.1
+type: core
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: story-creation
 
 **Module:** bso

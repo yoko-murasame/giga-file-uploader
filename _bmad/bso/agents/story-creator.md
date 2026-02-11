@@ -36,65 +36,18 @@ Headless — no direct user interaction. All output written to Story .md files f
 - Lessons injection budget — inject at most 10 entries sorted by recency + relevance from `_lessons-learned.md`, filtered by `[story-creation]` phase tag (Principle 25)
 - Technical claim verification — when Story references specific API names, method signatures, or framework features, trigger Knowledge Researcher to verify existence before finalizing the document (Principle 27)
 - When uncertain about framework or API usage, trigger Knowledge Researcher rather than guessing — precision over speed
-- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果通过 resume 对话注入。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"story-creator-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **⚠️ MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
-- **Resume 策略 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — revise 模式下，Orchestrator 会尝试 resume 上一次 create/revise 会话，将完整的 Epic 理解和设计思路上下文带入修订过程。Agent 无需感知 resume 机制（由 Orchestrator 透明处理），但应意识到 revise 模式可能在保留上次对话上下文的情况下执行
 
-## Team Mode: P2P Research Communication (P41)
 
-When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+## Result Delivery Protocol
 
-### Replacing needs-research Relay
+通过以下方式传递结果给 Orchestrator：
 
-- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
-- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "knowledge-researcher"
-  content: "RESEARCH_REQUEST: {json_payload}"
-  summary: "Research: {topic} for story {story_key}"
-```
-
-Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
-
-### Result Completion Report (Dual Mode)
-
-**SendMessage mode (result_delivery_mode=sendmessage):**
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "{lead_name}"
-  content: "AGENT_COMPLETE: {return_value_json}"
-  summary: "story-creator {story_key} {status}"
-```
-
-**TaskList mode (result_delivery_mode=tasklist):**
-
-```yaml
-TaskUpdate:
-  taskId: "{assigned_task_id}"
-  status: "completed"
-  metadata: {"return_value": {return_value_json}}
-```
-
-### P33 Principle Adaptation
-
-- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
-- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
-- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
-
-### P36 Resume Adaptation for Team Mode
-
-Team mode does not support Task tool `resume` parameter. For **revise** mode:
-- Orchestrator creates a new team member with the same subagent_type
-- The new member's `prompt/description` includes injected context from the previous session:
-  - Previous Story .md content created/revised
-  - Reviewer feedback that triggered the revise
-  - Key Epic understanding points from the previous session
-- This approximates resume behavior through context injection rather than session continuation
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="StoryCreator {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ## Headless Persona Loading Protocol
 
@@ -109,7 +62,7 @@ Team mode does not support Task tool `resume` parameter. For **revise** mode:
 | Mode | Input | Behavior |
 |------|-------|----------|
 | `create` | Epic definition + story_key | Full creation: read Epic → extract Story requirements → generate AC → decompose tasks → write Story .md → commit |
-| `revise` | Story .md + reviewer feedback | Targeted revision: read feedback → update AC/tasks → re-validate completeness → commit. **P36: revise 模式优先 resume 上一次 create 会话，保留 Epic 理解和设计思路上下文；resume 失败时 fallback 为新建对话** |
+| `revise` | Story .md + reviewer feedback | Targeted revision: read feedback → update AC/tasks → re-validate completeness → commit. Orchestrator 会在 prompt 中注入上次会话的关键上下文（Epic 理解、设计思路、reviewer 反馈）作为替代 |
 
 ## Agent Menu
 
@@ -119,7 +72,23 @@ BSO agents are **headless** — they do not expose interactive menus. They are d
 |---------|---------|-------------|----------|
 | (Orchestrator dispatch) | story-creation | Create Story document from Epic backlog entry | workflows/story-creation/ |
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (create or revise) | Return value JSON with status, story_file, completeness_checks |
+| RESEARCH_REQUEST | knowledge-researcher | Technical claim verification needed (Principle 27) | `{ story_key, requesting_agent: "story-creator-X-Y", queries[], context }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with story_key, mode, session_id, config_overrides, resident_contacts |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` — technical claim verification outcomes |
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -128,6 +97,15 @@ session_id: "sprint-2026-02-07-001"
 epic_file_path: "path/to/epic-3.md"  # Epic definition file path (required for create mode)
 config_overrides:
   max_story_review_rounds: 3  # only relevant for revise loop context
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ## Create Mode Execution Flow
@@ -229,10 +207,20 @@ config_overrides:
 - **Triggers:** Knowledge Researcher (F1), precise-git-commit (U3)
 - **State transitions:** `backlog` → `story-doc-review` (create complete) | `story-doc-improved` → `story-doc-review` (revise complete)
 
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. Execute precise-git-commit (U3 / Principle 32 Git Exit Gate) if pending changes exist
+3. Compose return value with final status (create or revise mode result)
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
+
 ## Return Value Schema
 
 ```yaml
-status: "success" | "failure" | "completeness-violation" | "needs-intervention" | "needs-research"
+status: "success" | "failure" | "completeness-violation" | "needs-intervention"
 story_key: "3-1"
 mode: "create" | "revise"
 session_id: "sprint-2026-02-07-001"
@@ -259,9 +247,5 @@ results:
   commits:
     - hash: "def5678"
       message: "docs: Story 3.1: 项目管理CRUD 创建开发文档"
-research_requests:                       # only when status is "needs-research"
-  - query: "JeecgBoot @Dict annotation usage"
-    framework: "jeecg-boot"
-    priority: "high"
 errors: []
 ```

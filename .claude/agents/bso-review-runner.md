@@ -34,59 +34,18 @@ Headless — no direct user interaction. Output is review report files with stru
 - Progressive degradation as review rounds increase — auto-lower severity thresholds to prevent infinite fix loops that consume budget without converging (Principle 22)
 - Budget controls everything — max_review_rounds caps total iterations, token budget awareness prevents runaway sessions (Principle 3)
 - When uncertain about framework correctness or API validity, trigger Knowledge Researcher rather than guessing — precision over speed
-- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果由 Orchestrator 注入新建对话上下文（Review Runner 始终使用新建对话，不 resume，符合 Principle 36）。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **⚠️ MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"review-runner-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **⚠️ MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3) 提交 review report 文件。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
-- **Review 独立视角 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — Review Runner 作为审查角色，每次 dispatch 始终使用新建对话，不 resume 历史会话。这确保每轮 code review 都以独立视角进行，防止前一轮审查的上下文导致确认偏误。与 Review Persona Independence (P30) 形成双重认知隔离保障
+- **Review 独立视角** — Review Runner 作为审查角色，每次 dispatch 始终使用新建对话。这确保每轮 code review 都以独立视角进行，防止前一轮审查的上下文导致确认偏误。与 Review Persona Independence (P30) 形成双重认知隔离保障
 
-## Team Mode: P2P Research Communication (P41)
+## Result Delivery Protocol
 
-When running as an Agent Team member (created by C1-TEAM command), research behavior changes:
+通过以下方式传递结果给 Orchestrator：
 
-### Replacing needs-research Relay
-
-- **C1 Mode (Fire-and-Forget):** Return `status: "needs-research"` + `research_requests` to Orchestrator for relay
-- **C1-TEAM Mode (Agent Team):** Directly communicate with KR via SendMessage:
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "knowledge-researcher"
-  content: "RESEARCH_REQUEST: {json_payload}"
-  summary: "Research: {topic} for story {story_key}"
-```
-
-Wait for KR to reply with `RESEARCH_RESULT` message, then continue execution with the results.
-
-### Result Completion Report (Dual Mode)
-
-**SendMessage mode (result_delivery_mode=sendmessage):**
-
-```yaml
-SendMessage:
-  type: "message"
-  recipient: "{lead_name}"
-  content: "AGENT_COMPLETE: {return_value_json}"
-  summary: "review-runner {story_key} {status}"
-```
-
-**TaskList mode (result_delivery_mode=tasklist):**
-
-```yaml
-TaskUpdate:
-  taskId: "{assigned_task_id}"
-  status: "completed"
-  metadata: {"return_value": {return_value_json}}
-```
-
-### P33 Principle Adaptation
-
-- C1 mode: Return `needs-research` to Orchestrator for relay dispatch
-- C1-TEAM mode: SendMessage directly to "knowledge-researcher" team member
-- Both modes prohibit direct Context7/DeepWiki/WebSearch MCP tool calls
-
-### P36 — No Team Adaptation Needed
-
-Review Runner always uses fresh conversations (Principle 36: Reviewer Fresh). This behavior is identical in both C1 and C1-TEAM modes — each dispatch creates a new team member with independent review perspective. Combined with Review Persona Independence (P30), this provides double cognitive isolation.
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="ReviewRunner {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ## Headless Persona Loading Protocol
 
@@ -112,7 +71,23 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 | (Orchestrator dispatch) | code-review | Adversarial code review with strictness-based decision | workflows/code-review/ |
 | (Orchestrator dispatch) | bug-triage | Bug 分诊：将用户报告的 Bug 归属到 Story + 评估严重度 + 记录到 Story 文件 + 生成修复队列 | workflows/code-review/ |
 
-## Skill Call Parameters (received from Orchestrator)
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (code-review or bug-triage) | Return value JSON |
+| RESEARCH_REQUEST | knowledge-researcher | Technical research needed during review | `{ queries, context, story_key }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with business context (mode: review or bug-triage) |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` |
+
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -121,6 +96,15 @@ session_id: "sprint-2026-02-07-001"
 config_overrides:
   review_strictness_threshold: "medium"    # current review_strictness_threshold (internal: high=lenient, medium=normal, low=strict)
   review_round: 1        # current review round number
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ## Review Mode Execution Flow
@@ -226,6 +210,16 @@ Items NOT on the checklist are explicitly out of scope for automated review:
 - If both agents used the same persona, the reviewer would tend to approve the same patterns the developer chose — confirmation bias
 - Winston's architectural perspective naturally surfaces concerns about separation of concerns, extensibility, and system-level impact that Amelia's implementation focus may overlook
 
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. Execute precise-git-commit (P32 Git Exit Gate) if pending changes exist
+3. Compose return value with final status
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
+
 ## Shared Context
 
 - **References:** Code changes (git diff), Story .md file, `sprint-status.yaml`, `project-context.md`, `_lessons-learned.md`, knowledge cache reports
@@ -241,7 +235,7 @@ Items NOT on the checklist are explicitly out of scope for automated review:
 ## Return Value Schema
 
 ```yaml
-status: "passed" | "needs-fix" | "needs-intervention" | "needs-research"
+status: "passed" | "needs-fix" | "needs-intervention"
 story_key: "3-1"
 mode: "review"
 session_id: "sprint-2026-02-07-001"
@@ -273,9 +267,5 @@ results:
       fix_instruction: "Add test case verifying exception thrown when project ID is null"
   review_report_path: "path/to/review-report-3-1-round-1.md"
   knowledge_queries: []
-research_requests:                       # only when status is "needs-research"
-  - query: "JeecgBoot @AutoLog annotation behavior"
-    framework: "jeecg-boot"
-    priority: "normal"
 errors: []
 ```

@@ -3,7 +3,8 @@ name: intent-parsing
 id: F3
 description: "Parse natural language or structured user input into validated execution parameters with Story list resolution and user confirmation"
 module: bso
-agent: orchestrator
+agent: bso-orchestrator
+type: feature
 version: 1.0.0
 created: 2026-02-07
 updated: 2026-02-07
@@ -16,7 +17,7 @@ status: validated
 
 ## Purpose
 
-auto-dev-sprint 命令的入口解析层。负责将三种输入形式（自然语言 / 精确参数 / 交互式触发）统一转化为结构化执行参数。核心职责包括：
+auto-dev-sprint-team 命令的入口解析层。负责将三种输入形式（自然语言 / 精确参数 / 交互式触发）统一转化为结构化执行参数。核心职责包括：
 
 1. **输入分类** -- 判断用户输入属于哪种路径，决定后续处理策略
 2. **NL 解析** -- 对自然语言输入进行 LLM 推理，提取 epic_spec、story 范围、filter、options 等意图

@@ -1,3 +1,17 @@
+---
+name: e2e-inspection
+id: F2
+description: "Browser-level AC verification with screenshot evidence -- optional workflow, triggered when config enabled + Story tags match frontend + browser MCP tool available"
+module: bso
+agent: bso-e2e-inspector
+type: feature
+optional: true
+status: validated
+version: 1.1.0
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: e2e-inspection
 
 **Module:** bso

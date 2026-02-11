@@ -1,7 +1,10 @@
 ---
 name: status-validation
 id: U4
+description: "Forced state validation before every agent dispatch, Epic-Status consistency check on startup, and atomic state file writes"
 module: bso
+agent: shared
+type: utility
 version: 1.1.0
 status: validated
 created: 2026-02-07
@@ -112,7 +115,7 @@ return:
     story_key: "3-1"
     target_phase: "story-creation"
     current_status: "backlog"
-    expected_statuses: ["backlog"]
+    expected_statuses: ["backlog", "story-doc-improved"]
     match: true
     orphan_detected: false
     orphan_details: null
@@ -169,7 +172,7 @@ return:
 | `code-review` | `review` | Code submitted, awaiting review |
 | `e2e-inspection` | `e2e-verify` | Code review passed, awaiting E2E verification |
 
-### Valid State Values (8 states)
+### Valid State Values (9 states)
 
 | State | Description | Valid Next States |
 |-------|-------------|------------------|
@@ -180,7 +183,8 @@ return:
 | `review` | Code under review | `done`, `e2e-verify`, `review` (fix loop), `needs-intervention` |
 | `e2e-verify` | E2E browser verification | `done`, `review` |
 | `needs-intervention` | Requires human intervention (abnormal) | -- |
-| `done` | Story completed (terminal) | -- |
+| `done` | Story completed (terminal, can be reverted by user-bug) | `needs-fix` |
+| `needs-fix` | User reported bug, awaiting fix (User Bug Feedback Protocol) | `done` |
 
 ---
 
@@ -194,9 +198,9 @@ Shared utility -- no dedicated Agent. Called inline by Orchestrator before every
 
 | Caller | Trigger Scenario | Mode |
 |--------|-----------------|------|
-| Sprint Orchestrator (C1) | Before every Agent dispatch | `pre-dispatch` |
-| Sprint Orchestrator (C1) | Sprint startup initialization | `startup-check` |
-| Sprint Orchestrator (C1) | After Agent returns, state transition | `atomic-write` |
+| Sprint Orchestrator | Before every Agent dispatch | `pre-dispatch` |
+| Sprint Orchestrator | Sprint startup initialization | `startup-check` |
+| Sprint Orchestrator | After Agent returns, state transition | `atomic-write` |
 
 ---
 

@@ -1,7 +1,10 @@
 ---
 name: concurrency-control
 id: U2
+description: "Manage .sprint-running mutex to prevent parallel sprint execution conflicts — acquire, release, and zombie lock detection"
 module: bso
+agent: bso-shared
+type: utility
 version: 1.0.0
 status: validated
 created: 2026-02-07
@@ -42,9 +45,9 @@ updated: 2026-02-07
 
 | Caller | Trigger | Mode |
 |--------|---------|------|
-| auto-dev-sprint (C1) | Sprint start | `acquire` |
-| auto-dev-sprint (C1) | Sprint normal completion | `release` |
-| auto-dev-sprint (C1) | Sprint abnormal termination | `release` (error recovery) |
+| auto-dev-sprint-team | Sprint start | `acquire` |
+| auto-dev-sprint-team | Sprint normal completion | `release` |
+| auto-dev-sprint-team | Sprint abnormal termination | `release` (error recovery) |
 | health-check (U1) | Environment check Step 9 | `check` |
 
 ---

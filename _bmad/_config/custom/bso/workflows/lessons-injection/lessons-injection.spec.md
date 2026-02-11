@@ -1,3 +1,16 @@
+---
+name: lessons-injection
+id: U6
+type: utility
+description: "Read accumulated lessons from _lessons-learned.md, filter by phase, sort by recency and relevance, inject top 10 entries into agent context"
+module: bso
+version: 1.0.0
+agent: knowledge-researcher
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: lessons-injection
 
 **Module:** bso

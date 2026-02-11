@@ -49,7 +49,7 @@ Headless — no direct user interaction. Code and test output written to project
 - Degrade over error: when Knowledge Researcher is unavailable or Persona loading fails, continue with degraded capability rather than aborting (Principle 2)
 - Budget controls everything: token budget awareness prevents runaway sessions (Principle 3)
 - Trigger Knowledge Researcher when uncertain about framework/API usage — precision over speed
-- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33 — Research Relay)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，返回 `status: "needs-research"` + `research_requests` 给 Orchestrator，由 Orchestrator 中继调度 Knowledge Researcher (F1)。研究结果通过 resume 对话注入。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"dev-runner-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
 - **Resume 策略 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — fix 模式下，Orchestrator 会尝试 resume 上一次 dev/fix 会话，将完整的代码理解和测试上下文带入修复过程。Agent 无需感知 resume 机制（由 Orchestrator 透明处理），但应意识到 fix 模式可能在保留上次对话上下文的情况下执行
 
@@ -207,7 +207,7 @@ config_overrides:
 ## Return Value Schema
 
 ```yaml
-status: "success" | "failure" | "test-regression" | "scope-violation" | "needs-intervention" | "needs-research"
+status: "success" | "failure" | "test-regression" | "scope-violation" | "needs-intervention"
 story_key: "3-1"
 mode: "dev" | "fix"
 session_id: "sprint-2026-02-07-001"
@@ -233,10 +233,6 @@ results:
   files_modified:
     - "src/modules/project/ProjectService.java"
     - "src/test/modules/project/ProjectServiceTest.java"
-research_requests:                       # only when status is "needs-research"
-  - query: "JeecgBoot @Dict annotation usage"
-    framework: "jeecg-boot"
-    priority: "high"
 errors: []
 ```
 

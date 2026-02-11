@@ -1,3 +1,16 @@
+---
+name: intent-parsing
+id: F3
+description: "Parse natural language or structured user input into validated execution parameters with Story list resolution and user confirmation"
+module: bso
+agent: bso-orchestrator
+type: feature
+version: 1.0.0
+created: 2026-02-07
+updated: 2026-02-07
+status: validated
+---
+
 # Workflow Specification: intent-parsing
 
 **Module:** bso
@@ -5,7 +18,7 @@
 **Created:** 2026-02-07
 **Updated:** 2026-02-07
 **Workflow ID:** F3
-**Agent:** orchestrator (inline logic, no separate agent)
+**Agent:** bso-orchestrator (inline logic, no separate agent)
 
 ---
 
@@ -65,7 +78,7 @@ return:
   stories: ["5-1", "5-2", "5-3", "5-4", "5-5"]
   filter: "incomplete"
   options:
-    review_strictness: "low"
+    review_strictness: "strict"
     skip_story_review: false
     e2e: false
     parallel: 1

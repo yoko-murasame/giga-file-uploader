@@ -6,7 +6,7 @@ Welcome to BSO! This guide will help you get up and running with autonomous spri
 
 ## What This Module Does
 
-BSO (Sprint Orchestrator) is an autonomous sprint development engine that orchestrates the complete Story lifecycle — from backlog to done — with zero manual intervention. It coordinates 6 specialized agents through a state machine architecture, featuring intelligent knowledge management, dual-layer quality review, optional E2E browser verification, and natural language intent parsing.
+BSO (Sprint Orchestrator) is an autonomous sprint development engine that orchestrates the complete Story lifecycle — from backlog to done — with zero manual intervention. It coordinates 10 specialized agents through a three-layer Master-Slave architecture (Master factory + SM/Slave orchestration + Agent execution), featuring intelligent knowledge management, dual-layer quality review, optional E2E browser verification, and natural language intent parsing.
 
 **One command to start, wake up to a completed Epic with full quality assurance.**
 
@@ -115,8 +115,8 @@ Minimal overhead: skip Story review and knowledge research for speed.
 
 ## What's Next?
 
-- Check out the [Agents Reference](agents.md) to understand the 6 specialized agents
-- Browse the [Workflows Reference](workflows.md) to see all 15 workflows
+- Check out the [Agents Reference](agents.md) to understand the 10 specialized agents
+- Browse the [Workflows Reference](workflows.md) to see all 16 workflows
 - See [Examples](examples.md) for real-world usage scenarios and troubleshooting
 
 ---

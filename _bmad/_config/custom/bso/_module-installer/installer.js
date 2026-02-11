@@ -18,7 +18,7 @@ const VALID_PLATFORMS = ['claude-code', 'windsurf', 'cursor', 'vscode', 'antigra
 // Module root is one level up from __dirname (_module-installer -> bso/)
 const MODULE_ROOT = path.resolve(__dirname, '..');
 
-// 6 Agents (strict match with install.md File Manifest)
+// 10 Agents (strict match with install.md File Manifest)
 const AGENT_FILES = [
   'story-creator.md',
   'story-reviewer.md',
@@ -26,14 +26,19 @@ const AGENT_FILES = [
   'review-runner.md',
   'e2e-inspector.md',
   'knowledge-researcher.md',
+  'sprint-slave.md',
+  'scrum-master.md',
+  'debugger.md',
+  'e2e-live.md',
 ];
 
-// 14 Workflows grouped by category (strict match with install.md)
+// 16 Workflows grouped by category (strict match with install.md)
 const CORE_WORKFLOWS = [
   'story-creation',
   'story-review',
   'dev-execution',
   'code-review',
+  'slave-orchestration',
 ];
 
 const FEATURE_WORKFLOWS = [
@@ -41,6 +46,7 @@ const FEATURE_WORKFLOWS = [
   'e2e-inspection',
   'intent-parsing',
   'interactive-guide',
+  'course-correction',
 ];
 
 const UTILITY_WORKFLOWS = [
@@ -54,9 +60,8 @@ const UTILITY_WORKFLOWS = [
 
 const ALL_WORKFLOWS = [...CORE_WORKFLOWS, ...FEATURE_WORKFLOWS, ...UTILITY_WORKFLOWS];
 
-// 2 Commands (C1 Fire-and-Forget + C1-TEAM Agent Team)
+// 1 Command (Agent Team mode)
 const COMMAND_FILES = [
-  'auto-dev-sprint.md',
   'auto-dev-sprint-team.md',
 ];
 
@@ -497,7 +502,7 @@ async function healthCheck(projectRoot, config, coreConfig, installedIDEs, logge
     log(logger, 'error', `  Agent 存档文件: ${agentArchiveCount}/${AGENT_FILES.length}`);
   }
 
-  // [File Integrity] — Workflows (14 total)
+  // [File Integrity] — Workflows (16 total)
   const wfBase = path.join(projectRoot, '_bmad', 'bso', 'workflows');
   let wfCount = 0;
   for (const wf of ALL_WORKFLOWS) {
@@ -512,7 +517,7 @@ async function healthCheck(projectRoot, config, coreConfig, installedIDEs, logge
     log(logger, 'error', `  Workflow 文件: ${wfCount}/${ALL_WORKFLOWS.length}`);
   }
 
-  // [File Integrity] — Commands (2 total)
+  // [File Integrity] — Commands (1 total)
   let cmdActiveCount = 0;
   let cmdBackupCount = 0;
   for (const cmdFile of COMMAND_FILES) {
@@ -768,7 +773,7 @@ async function install({ projectRoot, config = {}, coreConfig = {}, installedIDE
 
   if (step8) {
     log(logger, 'success', '🎉 BSO Module 安装完成！');
-    log(logger, 'info', '  运行 /bso:auto-dev-sprint --check 可随时重新检查环境状态');
+    log(logger, 'info', '  运行 /bso:auto-dev-sprint-team --check 可随时重新检查环境状态');
   } else {
     log(logger, 'error', '安装完成但健康检查发现问题，请查看上方报告。');
   }

@@ -1,3 +1,16 @@
+---
+name: code-review
+id: C5
+description: "Adversarial code review with progressive degradation and strictness-based decision"
+module: bso
+agent: bso-review-runner
+type: core
+version: 1.1.0
+status: validated
+created: 2026-02-07
+updated: 2026-02-07
+---
+
 # Workflow Specification: code-review
 
 **Module:** bso

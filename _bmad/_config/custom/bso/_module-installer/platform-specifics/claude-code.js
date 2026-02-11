@@ -30,7 +30,7 @@ async function copyFile(src, dest) {
   await fs.copyFile(src, dest);
 }
 
-// 6 Agents with bso- prefix for activation (strict match with install.md)
+// 10 Agents with bso- prefix for activation (strict match with install.md)
 const AGENT_FILES = [
   'story-creator.md',
   'story-reviewer.md',
@@ -38,18 +38,21 @@ const AGENT_FILES = [
   'review-runner.md',
   'e2e-inspector.md',
   'knowledge-researcher.md',
+  'sprint-slave.md',
+  'scrum-master.md',
+  'debugger.md',
+  'e2e-live.md',
 ];
 
-// 2 Commands (C1 Fire-and-Forget + C1-TEAM Agent Team)
+// 1 Command (Agent Team mode)
 const COMMAND_FILES = [
-  'auto-dev-sprint.md',
   'auto-dev-sprint-team.md',
 ];
 
 /**
  * Install Agent activation files to .claude/agents/bso-{name}.md
  * Per install.md Step 3: each agent gets a bso- prefix in the activation directory.
- * All 6 agents are installed unconditionally.
+ * All 10 agents are installed unconditionally.
  *
  * @param {Object} options
  * @param {string} options.projectRoot - Project root absolute path
@@ -86,7 +89,7 @@ async function installAgents({ projectRoot, srcDir, agentFiles = AGENT_FILES, lo
 /**
  * Install Command file to .claude/commands/bso/{commandFile}
  * Per install.md Step 5. Called once per command file by installer.js.
- * Supports: auto-dev-sprint.md (C1) + auto-dev-sprint-team.md (C1-TEAM)
+ * Supports: auto-dev-sprint-team.md (Agent Team mode)
  *
  * @param {Object} options
  * @param {string} options.projectRoot - Project root absolute path

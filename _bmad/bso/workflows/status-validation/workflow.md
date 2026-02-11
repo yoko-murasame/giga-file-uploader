@@ -4,6 +4,7 @@ id: U4
 description: "Forced state validation before every agent dispatch, Epic-Status consistency check on startup, and atomic state file writes"
 module: bso
 agent: shared
+type: utility
 version: 1.1.0
 created: 2026-02-07
 updated: 2026-02-07
@@ -33,9 +34,9 @@ status: validated
 
 | Caller | 触发场景 | 使用模式 |
 |--------|---------|---------|
-| Sprint Orchestrator (C1) | 每次 Agent dispatch 前 | `pre-dispatch` |
-| Sprint Orchestrator (C1) | Sprint 启动初始化 | `startup-check` |
-| Sprint Orchestrator (C1) | Agent 返回后状态转换 | `atomic-write` |
+| Sprint Orchestrator | 每次 Agent dispatch 前 | `pre-dispatch` |
+| Sprint Orchestrator | Sprint 启动初始化 | `startup-check` |
+| Sprint Orchestrator | Agent 返回后状态转换 | `atomic-write` |
 
 ---
 
@@ -557,7 +558,7 @@ defaults.agent_timeout_action                # 状态不匹配时 Orchestrator �
 
 # State machine definition (implicit)
 # 状态值和转换规则编码在 State Phase-Status Matching Table 中
-# 有效状态值: backlog, story-doc-review, story-doc-improved, ready-for-dev, review, e2e-verify, done
+# 有效状态值: backlog, story-doc-review, story-doc-improved, ready-for-dev, review, e2e-verify, needs-intervention, done, needs-fix
 
 # Parallel state write queue (when parallel > 1)
 defaults.parallel                            # 当 > 1 时，atomic-write 需要排队执行 (Principle 23)

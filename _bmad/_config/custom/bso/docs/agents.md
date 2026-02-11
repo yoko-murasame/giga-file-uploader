@@ -1,6 +1,6 @@
 # Agents Reference
 
-BSO includes 6 specialized agents + 1 orchestrator command. All agents operate in **headless mode** — they are dispatched by the Sprint Orchestrator and do not expose interactive menus.
+BSO includes 10 specialized agents + 1 orchestrator command. The first 6 agents handle Story-level execution, while 4 additional V2 agents (Sprint Slave, Scrum Master, Debugger, E2E Live) form the Master-Slave orchestration layer. All agents operate in **headless mode** — they are dispatched by the Sprint Orchestrator and do not expose interactive menus.
 
 ---
 
@@ -136,3 +136,88 @@ On-demand from any agent when encountering uncertain framework/API/technology us
 - Budget: max 3 calls per Story, 600s timeout per call
 
 **State Transition:** None — service agent, not a lifecycle agent
+
+---
+
+## Sprint Slave (V2)
+
+**ID:** `bso:agents:sprint-slave`
+**Persona:** BSO Native
+
+**Role:**
+Batch-level Story orchestration. Each Slave owns one batch (default 3 Stories), manages the Story lifecycle within that batch, and dispatches temporary Agents via Master proxy.
+
+**When BSO Uses This Agent:**
+When Master dispatches a batch for execution. One Slave per batch.
+
+**Key Capabilities:**
+- Serial Story execution within a batch
+- Two-Phase Agent Creation via Master (AGENT_CREATE_REQUEST / TASK_ASSIGNMENT)
+- sprint-status.yaml read/write (exclusive in serial mode)
+- Batch completion reporting (SLAVE_BATCH_COMPLETE)
+
+**State Transition:** Manages Story transitions within its batch scope
+
+---
+
+## Scrum Master (V2)
+
+**ID:** `bso:agents:scrum-master`
+**Persona:** BSO Native
+
+**Role:**
+Sprint-level planning and coordination. Groups Stories into batches, handles course correction, and serves as the sole authority on Story priority ordering.
+
+**When BSO Uses This Agent:**
+At Sprint startup for batch planning (BATCH_PLAN_READY), and during Sprint execution for course correction (COURSE_CORRECTION).
+
+**Key Capabilities:**
+- Epic-to-batch grouping (default 3 Stories per batch)
+- Dependency-aware ordering (P29)
+- Course correction re-planning
+- Does NOT write sprint-status.yaml (Principle 4)
+
+**State Transition:** None — planning agent, does not modify Story states directly
+
+---
+
+## Debugger (V2)
+
+**ID:** `bso:agents:debugger`
+**Persona:** BSO Native
+
+**Role:**
+Bug analysis, logging, and fix routing. Receives DEBUG_REQUEST from any agent, analyzes root cause, and returns DEBUG_RESULT with fix suggestions.
+
+**When BSO Uses This Agent:**
+On-demand when any agent encounters errors that need deeper analysis.
+
+**Key Capabilities:**
+- Stack trace and test output analysis
+- Root cause identification with confidence scoring
+- Fix suggestion generation
+- Persistent debug journal (debug-journal.md, Principle P49)
+- Journal rebuild on context full
+
+**State Transition:** None — service agent, not a lifecycle agent
+
+---
+
+## E2E Live (V2)
+
+**ID:** `bso:agents:e2e-live`
+**Persona:** BSO Native
+
+**Role:**
+Real-time browser assistant providing stateless browser operation services. Handles BROWSER_REQUEST / BROWSER_RESULT message pairs.
+
+**When BSO Uses This Agent:**
+On-demand when any agent needs real-time browser interaction (navigation, screenshots, element checks).
+
+**Key Capabilities:**
+- Stateless request-response service (Principle P50)
+- No cross-request browser session persistence
+- Navigation, screenshot capture, element interaction
+- Graceful degradation when browser MCP unavailable
+
+**State Transition:** None — stateless service agent

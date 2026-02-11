@@ -4,6 +4,7 @@ id: U3
 description: "Safe, precise git commits with per-file staging, sensitive file safeguard, configurable commit patterns, and post-Story squash support"
 module: bso
 agent: shared
+type: utility
 version: 1.1.0
 created: 2026-02-07
 updated: 2026-02-07
@@ -35,7 +36,7 @@ status: validated
 | dev-execution (C4) | 开发完成后提交代码 | `dev_complete` |
 | code-review (C5) | Code Review 完成后提交报告 | `review_complete` |
 | code-review (C5) | Fix 修复后提交代码 | `fix_complete` |
-| Orchestrator (C1) | Story 到达 done，执行 squash | `squash` |
+| Orchestrator | Story 到达 done，执行 squash | `squash` |
 
 ---
 
@@ -533,7 +534,7 @@ Caller (C2/C4/C5)                 Precise Git Commit (U3)
 ### Squash Flow
 
 ```
-Orchestrator (C1)                 Precise Git Commit (U3)
+Orchestrator                      Precise Git Commit (U3)
     |                                       |
     |--- squash(story_key, title) --------->|
     |                                       |

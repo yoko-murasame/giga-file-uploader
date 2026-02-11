@@ -3,7 +3,7 @@
 **Module:** bso
 **Status:** Completed
 **Created:** 2026-02-07
-**Last Validated:** 2026-02-07
+**Last Validated:** 2026-02-11
 
 ---
 
@@ -20,7 +20,7 @@ agent:
     module: bso
     hasSidecar: false
     default_persona: "bmad:bmm:agents:architect"
-    status: Reviewed
+    status: Completed
 ```
 
 ---
@@ -47,8 +47,20 @@ Headless — no direct user interaction. Output is review report files with stru
 - Progressive degradation as review rounds increase — auto-lower severity thresholds to prevent infinite fix loops that consume budget without converging (Principle 22)
 - Budget controls everything — max_review_rounds caps total iterations, token budget awareness prevents runaway sessions (Principle 3)
 - When uncertain about framework correctness or API validity, trigger Knowledge Researcher rather than guessing — precision over speed
-- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。所有技术查询必须通过 Knowledge Researcher (F1) 的 Skill Call 进行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
+- **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"review-runner-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3) 提交 review report 文件。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
+- **Review 独立视角** — Review Runner 作为审查角色，每次 dispatch 始终使用新建对话。这确保每轮 code review 都以独立视角进行，防止前一轮审查的上下文导致确认偏误。与 Review Persona Independence (P30) 形成双重认知隔离保障
+
+---
+
+## Result Delivery Protocol
+
+通过以下方式传递结果给 Orchestrator：
+
+- **SendMessage 模式** (`result_delivery_mode: "sendmessage"`):
+  `SendMessage(type="message", recipient="{report_to}", content="AGENT_COMPLETE: {return_value_json}", summary="ReviewRunner {story_key} {status}")`
+- **TaskList 模式** (`result_delivery_mode: "tasklist"`):
+  `TaskUpdate(taskId="{assigned_task_id}", status="completed", metadata={"return_value": {return_value_json}})`
 
 ---
 
@@ -62,6 +74,24 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 |---------|---------|-------------|----------|
 | (Orchestrator dispatch) | code-review | Adversarial code review with strictness-based decision | workflows/code-review/ |
 | (Orchestrator dispatch) | bug-triage | Bug 分诊：将用户报告的 Bug 归属到 Story + 评估严重度 + 记录到 Story 文件 + 生成修复队列 | workflows/code-review/ |
+
+---
+
+## Team Communication Protocol
+
+### Messages Sent
+
+| Message Type | Recipient | Trigger | Content |
+|---|---|---|---|
+| AGENT_COMPLETE | {report_to} (Slave) | Task completed (code-review or bug-triage) | Return value JSON |
+| RESEARCH_REQUEST | knowledge-researcher | Technical research needed during review | `{ queries, context, story_key }` |
+
+### Messages Received
+
+| Message Type | From | Content |
+|---|---|---|
+| (dispatch parameters) | Slave | Task assignment with business context (mode: review or bug-triage) |
+| RESEARCH_RESULT | knowledge-researcher | `{ results[], cache_hits, errors[] }` |
 
 ---
 
@@ -84,7 +114,7 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 
 ---
 
-## Skill Call Parameters (received from Orchestrator)
+## Dispatch Parameters (received from Orchestrator)
 
 ```yaml
 story_key: "3-1"
@@ -93,6 +123,15 @@ session_id: "sprint-2026-02-07-001"
 config_overrides:
   review_strictness_threshold: "medium"    # current review_strictness_threshold (internal: high=lenient, medium=normal, low=strict)
   review_round: 1        # current review round number
+
+# === Team 通信参数 (Slave 提供 via TASK_ASSIGNMENT) ===
+report_to: "{report_to}"               # 回报对象的 member name (通常是 Slave), 用于 SendMessage 回报结果
+result_delivery_mode: "sendmessage"     # "sendmessage" | "tasklist"
+assigned_task_id: "{task_id}"           # 仅 tasklist 模式时提供
+resident_contacts:                       # 常驻 Agent 联系方式 (Slave 提供 via TASK_ASSIGNMENT)
+  knowledge-researcher: "knowledge-researcher"
+  debugger: "debugger"
+  e2e-live: "e2e-live"
 ```
 
 ---
@@ -154,6 +193,31 @@ config_overrides:
 ```
 
 **State transition:** `review` → `done`/`e2e-verify` (passed) | `review` → Dev Runner fix mode (needs-fix) | `review` → `needs-intervention` (round 8+ degradation)
+
+---
+
+## Bug-Triage Mode Execution Flow
+
+```
+1. Load BMM Architect (Winston) persona via Skill call (headless)
+2. Read pending-bugs.md — extract all pending Bug entries with user descriptions
+3. Read all Story files in `done` state — extract each Story's scope declarations and AC list
+4. For each pending Bug:
+   a. Match Bug to Story — identify which done Story's scope covers the Bug's affected area
+   b. If no matching Story found: tag Bug as "unscoped" and flag for manual triage
+   c. If matching Story found:
+      i.   Assess Bug severity (HIGH/MEDIUM/LOW) based on impact and scope
+      ii.  Record Bug details into the matched Story file (append to Bug section)
+      iii. Include: Bug ID, severity, user description, affected files, reproduction notes
+5. Generate triage report:
+   a. Summary: total Bugs triaged, by severity, by matched Story
+   b. fix_queue: ordered list of Bugs to fix, sorted by severity (HIGH first)
+   c. Unscoped Bugs list (if any) — require manual Story assignment
+6. Execute precise-git-commit (U3) — commit updated Story files and triage report (Principle 32: Mandatory Git Exit Gate)
+7. Return status to Orchestrator with triage report path and fix_queue
+```
+
+**State transition:** Bug-triage is a service operation, not a Story lifecycle transition. Output is a triage report + updated Story files with Bug records.
 
 ---
 
@@ -238,6 +302,18 @@ results:
   knowledge_queries: []
 errors: []
 ```
+
+---
+
+## Shutdown Protocol
+
+As a temporary agent, the shutdown sequence is:
+
+1. Complete current execution step (do not abandon mid-operation)
+2. Execute precise-git-commit (P32 Git Exit Gate) if pending changes exist
+3. Compose return value with final status
+4. Send AGENT_COMPLETE to {report_to} via configured result_delivery_mode
+5. Process terminates naturally after message delivery
 
 ---
 
