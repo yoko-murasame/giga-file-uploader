@@ -71,6 +71,6 @@ development_status:
 
   # Epic 5: 上传配置与离线体验
   epic-5: in-progress
-  5-1-file-retention-period-selection: review
-  5-2-offline-mode-and-network-status-awareness: backlog
+  5-1-file-retention-period-selection: done
+  5-2-offline-mode-and-network-status-awareness: ready-for-dev
   epic-5-retrospective: optional
