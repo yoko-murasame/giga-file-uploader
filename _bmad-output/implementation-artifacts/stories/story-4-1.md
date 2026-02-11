@@ -35,9 +35,11 @@ So that 我以后可以找到之前上传的文件链接。
 | `uploadedAt` | `String` | 上传时间，ISO 8601 格式 |
 | `expiresAt` | `String` | 过期日期，ISO 8601 格式，根据保留期（`config.lifetime` 天）从上传时间计算 |
 
-**And** 保存操作在 Rust 后端 `upload_engine.rs` 的 `upload_file` 函数内完成，位于 `upload:file-complete` 事件发射之后
+**And** 保存操作在 Rust 后端 `upload_engine.rs` 的 `upload_file` 函数内完成，位于 `upload:file-complete` 事件发射**之前**
 **And** 这是 Rust-to-Rust 调用（`storage::history::add_record()`），不经过 IPC
 **And** 保存失败仅记录日志（`log::error!`），不影响上传流程的正常完成
+
+> **[RC-3/RC-4 修正]** 保存必须在 emit 之前执行。原因：(1) `download_url` 变量在 `app.emit()` 调用中被 move 进 `FileCompletePayload`，emit 之后 `download_url` 不再可用（Rust 所有权规则），在 emit 前使用 `download_url.clone()` 构建 HistoryRecord 避免编译错误；(2) save-before-emit 消除崩溃窗口，满足 NFR11 崩溃安全要求。
 
 ### AC-2: 使用 tauri-plugin-store 写入 history.json
 
@@ -53,7 +55,9 @@ So that 我以后可以找到之前上传的文件链接。
 **When** 应用在上传过程中崩溃或异常退出
 **Then** 已成功保存的历史记录不丢失
 **And** 保证机制：每条记录写入后立即调用 `store.save()` 刷盘，不依赖应用正常退出时的批量写入
-**And** 保存操作在 Rust 后端执行（不依赖前端事件监听），upload_engine 在发射 `upload:file-complete` 事件后直接调用 `storage::history::add_record()`
+**And** 保存操作在 Rust 后端执行（不依赖前端事件监听），upload_engine 在发射 `upload:file-complete` 事件**前**直接调用 `storage::history::add_record()`
+
+> **[RC-4 修正]** save-before-emit 是 NFR11 的关键保障。如果依赖 emit 后保存，应用在 emit 和 save 之间崩溃会丢失记录。`upload:file-complete` 事件仅是 UI 通知，即使因崩溃丢失，前端下次启动时通过 `loadHistory()` 加载已持久化的记录即可。
 
 ### AC-4: storage/history.rs CRUD 函数
 
@@ -186,21 +190,21 @@ interface HistoryState {
 
 Epic 3 已完成核心上传引擎，关键集成点：
 
-- `src-tauri/src/services/upload_engine.rs` — `upload_file` 函数在文件上传完成后发射 `upload:file-complete` 事件（第 208-216 行），此时拥有 `AppHandle`、`task.file_name`、`download_url`、`task.file_size`、`config.lifetime` 所有所需数据
-- `src-tauri/src/lib.rs` — 已注册 `tauri-plugin-store`（第 15 行），`invoke_handler` 在第 21-25 行，需追加新 commands
-- `src-tauri/src/error.rs` — `AppError::Storage(String)` 变体已定义，可直接用于存储错误
-- `src-tauri/src/models/mod.rs:9` — 预留 TODO: `pub mod history;`
-- `src-tauri/src/storage/mod.rs:7` — 预留 TODO: `pub mod history;`
-- `src-tauri/src/commands/mod.rs:10` — 预留 TODO: `pub mod history;`
-- `src/stores/historyStore.ts` — Zustand store 占位符，需替换为完整实现
-- `src/lib/tauri.ts` — IPC 封装入口，需添加 `getHistory()`、`deleteHistory()` 函数
+- `src-tauri/src/services/upload_engine.rs` -- `upload_file` 函数在文件上传完成后发射 `upload:file-complete` 事件（第 207-216 行），此时拥有 `AppHandle`、`task.file_name`、`download_url`、`task.file_size`、`config.lifetime` 所有所需数据
+- `src-tauri/src/lib.rs` -- 已注册 `tauri-plugin-store`（第 15 行），`invoke_handler` 在第 21-25 行，需追加新 commands
+- `src-tauri/src/error.rs` -- `AppError::Storage(String)` 变体已定义，可直接用于存储错误
+- `src-tauri/src/models/mod.rs:9` -- 预留 TODO: `pub mod history;`
+- `src-tauri/src/storage/mod.rs:7` -- 预留 TODO: `pub mod history;`
+- `src-tauri/src/commands/mod.rs:10` -- 预留 TODO: `pub mod history;`
+- `src/stores/historyStore.ts` -- Zustand store 占位符，需替换为完整实现
+- `src/lib/tauri.ts` -- IPC 封装入口，需添加 `getHistory()`、`deleteHistory()` 函数
 
-**关键设计决策 — Rust 端直接保存（非 IPC 触发）：**
+**关键设计决策 -- Rust 端直接保存，save-before-emit：**
 
-保存历史记录在 Rust 端 `upload_engine.rs` 内完成，而非通过前端监听 `upload:file-complete` 事件后调用 IPC command。原因：
-1. **NFR11 崩溃安全**：如果依赖前端触发保存，应用在事件发射和前端处理之间崩溃会丢失记录
-2. **数据完整性**：`upload_engine` 已拥有所有必需数据（`file_name`、`download_url`、`file_size`、`config.lifetime`），无需跨 IPC 传递
-3. **关注点分离**：持久化是后端关注点，前端仅负责读取和展示
+保存历史记录在 Rust 端 `upload_engine.rs` 内完成，且必须在发射 `upload:file-complete` 事件**之前**执行。原因：
+1. **RC-3 编译正确性**：现有代码 `upload_engine.rs:207-216` 中 `download_url` 变量在 `app.emit()` 调用时 move 进 `FileCompletePayload`。如果在 emit 后构建 `HistoryRecord`，`download_url` 已被消耗，`download_url.clone()` 将无法编译。在 emit 前构建 `HistoryRecord` 并使用 `download_url.clone()` 解决此问题。
+2. **RC-4 NFR11 崩溃安全**：save-before-emit 消除了 emit-to-save 之间的崩溃窗口。如果依赖 emit 后保存，应用在发射事件和写入磁盘之间崩溃会永久丢失记录。save-before-emit 保证记录先落盘，`upload:file-complete` 仅是 UI 通知——即使因崩溃丢失，前端下次启动 `loadHistory()` 即可恢复。
+3. **数据完整性**：`upload_engine` 已拥有所有必需数据（`file_name`、`download_url`、`file_size`、`config.lifetime`），无需跨 IPC 传递。
 
 ### 新增/修改模块
 
@@ -261,12 +265,15 @@ pub fn delete_record(app: &tauri::AppHandle, id: &str) -> crate::error::Result<(
     Ok(())
 }
 
-fn load_records(store: &tauri_plugin_store::Store<tauri::Wry>) -> Vec<HistoryRecord> {
+/// Load records from store, returning empty vec if key does not exist.
+fn load_records(store: &impl std::ops::Deref<Target = tauri_plugin_store::StoreInner>) -> Vec<HistoryRecord> {
     store.get(RECORDS_KEY)
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default()
 }
 ```
+
+> **[RC-8 Warning 修正]** `load_records` 的参数类型不硬编码 `Store<tauri::Wry>`，改用 trait bound 或让 Dev Runner 根据 `app.store()` 的实际返回类型调整签名。
 
 #### 3. `commands/history.rs` -- IPC commands（新建）
 
@@ -287,27 +294,49 @@ pub fn delete_history(id: String, app: tauri::AppHandle) -> Result<(), String> {
 
 #### 4. `services/upload_engine.rs` -- 集成历史保存（修改）
 
-在 `upload_file` 函数中，`upload:file-complete` 事件发射之后，添加历史记录保存：
+在 `upload_file` 函数中，**在 `upload:file-complete` 事件发射之前**，添加历史记录保存。这同时解决 RC-3（download_url 所有权）和 RC-4（NFR11 崩溃安全）。
 
 ```rust
-// 现有代码（第 208-216 行）:
-let _ = app.emit("upload:file-complete", FileCompletePayload { ... });
+// 现有代码（第 200-206 行）不变:
+// Collect shard download URLs
+if task.shards.len() == 1 {
+    task.download_url = task.shards[0].download_url.clone();
+}
+task.status = UploadStatus::Completed;
 
-// 新增：保存历史记录（NFR11: crash-safe persistence）
+// 现有代码（第 207 行）不变:
+let download_url = task.shards[0].download_url.clone().unwrap_or_default();
+
+// ===== 新增：保存历史记录（BEFORE emit, NFR11 crash-safe） =====
 let now = chrono::Utc::now();
-let expires = now + chrono::Duration::days(config.lifetime as i64);
 let history_record = crate::models::history::HistoryRecord {
     id: uuid::Uuid::new_v4().simple().to_string(),
     file_name: task.file_name.clone(),
-    download_url: download_url.clone(),
+    download_url: download_url.clone(),  // clone before download_url moves into emit
     file_size: task.file_size,
     uploaded_at: now.to_rfc3339(),
-    expires_at: expires.to_rfc3339(),
+    expires_at: (now + chrono::TimeDelta::days(config.lifetime as i64)).to_rfc3339(),
 };
 if let Err(e) = crate::storage::history::add_record(&app, history_record) {
     log::error!("Failed to save history record for '{}': {}", task.file_name, e);
 }
+// ===== 新增结束 =====
+
+// 现有代码（第 208-216 行）不变 -- download_url moves here:
+let _ = app.emit(
+    "upload:file-complete",
+    FileCompletePayload {
+        task_id,
+        file_name: task.file_name.clone(),
+        download_url,      // download_url: String -- MOVED
+        file_size: task.file_size,
+    },
+);
+
+Ok(())
 ```
+
+> **关键：`download_url.clone()` 在 emit 之前**。`download_url` 是 `String`，在 `app.emit()` 中被 move 进 `FileCompletePayload`。`HistoryRecord` 在 emit 之前构建，使用 `download_url.clone()` 获取副本。emit 调用消耗原 `download_url`，此时 `HistoryRecord` 已拥有自己的副本，编译安全。
 
 #### 5. `lib.rs` -- 注册新 commands（修改）
 
@@ -328,6 +357,8 @@ if let Err(e) = crate::storage::history::add_record(&app, history_record) {
 # ... existing deps ...
 chrono = { version = "0.4", features = ["serde"] }
 ```
+
+> **[RC-8 Warning 修正]** 使用 `chrono::TimeDelta::days()` 代替已弃用的 `chrono::Duration::days()`，避免 chrono 0.4.35+ 的 deprecation 警告。
 
 #### 7. `src/types/history.ts` -- 前端类型定义（新建）
 
@@ -402,11 +433,12 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 ```
 文件上传完成 (Rust upload_engine.rs):
   -> upload_file() 所有分片完成
-  -> 发射 upload:file-complete 事件到前端
-  -> 调用 storage::history::add_record()
+  -> download_url = task.shards[0].download_url.clone().unwrap_or_default()
+  -> [SAVE FIRST] 调用 storage::history::add_record()
     -> tauri-plugin-store 写入 history.json "records" 数组
     -> store.save() 立即刷盘（NFR11）
   -> 保存失败仅 log::error!，不影响上传结果
+  -> [EMIT SECOND] 发射 upload:file-complete 事件到前端（download_url moves here）
 
 前端读取历史 (Story 4.2 使用):
   -> historyStore.loadHistory()
@@ -428,11 +460,11 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
 ### 设计决策
 
-1. **Rust 端直接保存，非 IPC 触发**：`upload_engine.rs` 在发射 `upload:file-complete` 事件后直接调用 `storage::history::add_record()`。如果依赖前端监听事件后回调 IPC command 来保存，应用在事件发射到前端处理之间崩溃会丢失记录。Rust-to-Rust 调用消除了这一窗口（NFR11）。
+1. **Save-before-emit（RC-3 + RC-4 联合修正）**：`upload_engine.rs` 在发射 `upload:file-complete` 事件**前**直接调用 `storage::history::add_record()`。此顺序同时解决两个问题：(a) Rust 所有权 -- `download_url` 在 emit 中被 move，emit 前使用 `download_url.clone()` 构建 `HistoryRecord` 确保编译通过；(b) NFR11 崩溃安全 -- 记录先落盘再发 UI 通知，消除 emit-to-save 之间的崩溃窗口。
 
 2. **保存失败不中断上传流程**：历史记录是辅助功能，如果因存储错误（如磁盘满）导致保存失败，仅记录错误日志，不影响 `upload_file` 函数返回 `Ok(())`。用户的文件已成功上传到 gigafile.nu，链接已通过 `upload:file-complete` 事件传递到前端。
 
-3. **ISO 8601 时间戳使用 chrono crate**：需要当前时间 + 保留天数计算过期日期，`chrono` 是 Rust 生态中处理时间的标准库，提供 `to_rfc3339()` 直接生成 ISO 8601 格式字符串。
+3. **ISO 8601 时间戳使用 chrono crate**：需要当前时间 + 保留天数计算过期日期，`chrono` 是 Rust 生态中处理时间的标准库，提供 `to_rfc3339()` 直接生成 ISO 8601 格式字符串。使用 `chrono::TimeDelta::days()` 代替已弃用的 `chrono::Duration::days()`。
 
 4. **records 数组按时间倒序存储**：`add_record()` 将新记录插入到数组头部（`insert(0, record)`），`get_all()` 直接返回原序。这样 Story 4.2 的历史列表默认最新在前，无需额外排序。
 
@@ -440,9 +472,9 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
 6. **historyStore 错误处理使用 try/catch + console.error**：与 `uploadStore.startUpload` 的错误处理模式一致（见 `uploadStore.ts:64`）。Store actions 捕获 IPC 错误并记录日志，不抛出异常给组件。
 
-7. **HistoryRecord.id 使用 UUID v4**：与项目中其他 ID 生成方式一致（如 `upload_engine.rs` 中的 `task_id`），保证唯一性。
+7. **HistoryRecord.id 使用 UUID v4**：与项目中其他 ID 生成方式一致（如 `upload_engine.rs` 中的 `task_id`），保证唯一性。`uuid` crate 已在 `Cargo.toml:24` 中声明。
 
-8. **tauri-plugin-store 存储文件命名为 `history.json`**：与 Epic AC 一致。tauri-plugin-store 默认将文件存储在应用数据目录（`AppData/giga-file-uploader/`）中。
+8. **tauri-plugin-store 存储文件命名为 `history.json`**：与 Epic AC 一致。tauri-plugin-store 默认将文件存储在应用数据目录（macOS: `~/Library/Application Support/nu.gigafile.uploader/`，Windows: `%APPDATA%/nu.gigafile.uploader/`）。
 
 ### 与前后 Story 的关系
 
@@ -503,16 +535,17 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 4.2. 在 `src-tauri/src/commands/mod.rs` 中将 TODO 注释替换为 `pub mod history;`
 4.3. 在 `src-tauri/src/lib.rs` 的 `invoke_handler` 中注册 `commands::history::get_history` 和 `commands::history::delete_history`
 
-### Task 5: upload_engine 集成历史保存
+### Task 5: upload_engine 集成历史保存（save-before-emit）
 
 **文件:** `src-tauri/src/services/upload_engine.rs`（修改）
 **依赖:** Task 1, Task 3
 
 **Subtasks:**
 
-5.1. 在 `upload_file` 函数中，`upload:file-complete` 事件发射之后，添加 `HistoryRecord` 构建和 `storage::history::add_record()` 调用
-5.2. 使用 `chrono::Utc::now()` 生成上传时间，`now + chrono::Duration::days(config.lifetime as i64)` 计算过期日期
-5.3. 保存失败使用 `log::error!` 记录，不影响函数返回值
+5.1. 在 `upload_file` 函数中，`upload:file-complete` 事件发射**之前**，添加 `HistoryRecord` 构建和 `storage::history::add_record()` 调用
+5.2. 使用 `download_url.clone()` 为 `HistoryRecord` 获取 download_url 副本（`download_url` 本身将在后续 emit 中被 move）
+5.3. 使用 `chrono::Utc::now()` 生成上传时间，`now + chrono::TimeDelta::days(config.lifetime as i64)` 计算过期日期
+5.4. 保存失败使用 `log::error!` 记录，不影响函数返回值
 
 ### Task 6: 前端类型与 IPC 封装
 
@@ -563,16 +596,16 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 ## Task 依赖顺序
 
 ```
-Task 1 (chrono 依赖) ──→ Task 3 (storage CRUD) ──→ Task 4 (IPC commands) ──→ Task 6 (前端类型/IPC)
-                              │                          │                          │
-Task 2 (HistoryRecord) ──────┘                          │                          ↓
-                                                         │                    Task 7 (historyStore)
-                                                         │                          │
-Task 5 (upload_engine 集成) ←─── Task 1 + Task 3         │                          ↓
-                                                         │                    Task 8 (前端测试)
-                                                         │                          │
-                                                         ↓                          ↓
-                                                    Task 9 (代码质量验证) ←─── 所有 Tasks
+Task 1 (chrono 依赖) ──-> Task 3 (storage CRUD) ──-> Task 4 (IPC commands) ──-> Task 6 (前端类型/IPC)
+                              |                          |                          |
+Task 2 (HistoryRecord) ─────-+                          |                          v
+                                                         |                    Task 7 (historyStore)
+                                                         |                          |
+Task 5 (upload_engine 集成) <─── Task 1 + Task 3         |                          v
+                                                         |                    Task 8 (前端测试)
+                                                         |                          |
+                                                         v                          v
+                                                    Task 9 (代码质量验证) <─── 所有 Tasks
 ```
 
 ---
@@ -599,7 +632,7 @@ Dev Runner 被允许修改的文件列表：
 | `src-tauri/src/models/mod.rs` | 将 TODO 注释替换为 `pub mod history;` |
 | `src-tauri/src/storage/mod.rs` | 将 TODO 注释替换为 `pub mod history;` |
 | `src-tauri/src/commands/mod.rs` | 将 TODO 注释替换为 `pub mod history;` |
-| `src-tauri/src/services/upload_engine.rs` | 在 `upload_file` 函数中添加历史记录保存逻辑（`upload:file-complete` 事件发射后） |
+| `src-tauri/src/services/upload_engine.rs` | 在 `upload_file` 函数中 `upload:file-complete` 事件发射**前**添加历史记录保存逻辑（save-before-emit） |
 | `src-tauri/src/lib.rs` | 在 `invoke_handler` 中注册 `get_history` 和 `delete_history` commands |
 | `src/lib/tauri.ts` | 添加 `getHistory()` 和 `deleteHistory()` IPC 封装函数 |
 | `src/stores/historyStore.ts` | 替换占位内容为完整 store 实现（`records` 状态 + `loadHistory` + `deleteRecord` actions） |
@@ -650,39 +683,48 @@ store.save()?;
 ### chrono 时间处理
 
 ```rust
-use chrono::{Duration, Utc};
+use chrono::{TimeDelta, Utc};
 
 let now = Utc::now();
 let uploaded_at = now.to_rfc3339();  // "2026-02-11T08:30:00.123456789+00:00"
 
-let expires = now + Duration::days(config.lifetime as i64);
+let expires = now + TimeDelta::days(config.lifetime as i64);
 let expires_at = expires.to_rfc3339();
 ```
 
 `to_rfc3339()` 生成的格式是 ISO 8601 兼容的 RFC 3339 格式，可以直接在前端使用 `new Date(string)` 解析。
 
-### upload_engine 修改点
+> **注意**：使用 `chrono::TimeDelta::days()` 而非已弃用的 `chrono::Duration::days()`（chrono 0.4.35+ deprecation）。
 
-修改位于 `upload_engine.rs` 的 `upload_file` 函数（第 200-218 行附近），在现有的 `upload:file-complete` 事件发射代码之后添加保存逻辑。`upload_file` 函数签名无需修改，已有 `app: tauri::AppHandle` 和 `config: &UploadConfig` 参数。
+### upload_engine 修改点（save-before-emit 正确顺序）
+
+修改位于 `upload_engine.rs` 的 `upload_file` 函数（第 207 行附近），在现有的 `upload:file-complete` 事件发射代码**之前**添加保存逻辑。`upload_file` 函数签名无需修改，已有 `app: tauri::AppHandle` 和 `config: &UploadConfig` 参数。
 
 ```rust
-// 现有代码不变:
+// 第 207 行：download_url 提取（不变）
 let download_url = task.shards[0].download_url.clone().unwrap_or_default();
-let _ = app.emit("upload:file-complete", FileCompletePayload { ... });
 
-// 新增保存逻辑 (在 Ok(()) 之前):
+// ===== 新增：保存历史记录（BEFORE emit） =====
 let now = chrono::Utc::now();
 let history_record = crate::models::history::HistoryRecord {
     id: uuid::Uuid::new_v4().simple().to_string(),
     file_name: task.file_name.clone(),
-    download_url: download_url.clone(),
+    download_url: download_url.clone(),  // clone BEFORE move
     file_size: task.file_size,
     uploaded_at: now.to_rfc3339(),
-    expires_at: (now + chrono::Duration::days(config.lifetime as i64)).to_rfc3339(),
+    expires_at: (now + chrono::TimeDelta::days(config.lifetime as i64)).to_rfc3339(),
 };
 if let Err(e) = crate::storage::history::add_record(&app, history_record) {
     log::error!("Failed to save history record for '{}': {}", task.file_name, e);
 }
+
+// 第 208-216 行：emit 事件（不变，download_url moves here）
+let _ = app.emit("upload:file-complete", FileCompletePayload {
+    task_id,
+    file_name: task.file_name.clone(),
+    download_url,
+    file_size: task.file_size,
+});
 
 Ok(())
 ```
@@ -713,9 +755,26 @@ vi.mock('@/lib/tauri', () => ({
 ### Story 4.2 集成预留
 
 Story 4.2 将在"历史记录" Tab 中构建 UI，使用本 Story 提供的：
-- `useHistoryStore` — `records` 状态 + `loadHistory()`/`deleteRecord()` actions
-- `HistoryRecord` 类型 — 渲染列表项
-- `getHistory`/`deleteHistory` IPC — 已封装在 store 中，组件不直接调用
+- `useHistoryStore` -- `records` 状态 + `loadHistory()`/`deleteRecord()` actions
+- `HistoryRecord` 类型 -- 渲染列表项
+- `getHistory`/`deleteHistory` IPC -- 已封装在 store 中，组件不直接调用
+
+---
+
+## RC-3 / RC-4 修正追踪
+
+本 Story 文档是在吸收了前两轮 Review 反馈后重新创建的版本，确保以下 8 处全部使用 save-before-emit 正确顺序：
+
+| # | 位置 | 修正内容 |
+|---|------|----------|
+| 1 | AC-1 | "位于 `upload:file-complete` 事件发射**之前**" |
+| 2 | AC-3 | "upload_engine 在发射 `upload:file-complete` 事件**前**直接调用" |
+| 3 | Technical Design section 4 | save 代码块在 emit 代码块之前，使用 `download_url.clone()` |
+| 4 | 数据流图 | `[SAVE FIRST]` -> `[EMIT SECOND]` 顺序 |
+| 5 | 设计决策 1 | "在发射 `upload:file-complete` 事件**前**直接调用" |
+| 6 | upload_engine 修改说明 | save 代码块在 emit 代码块之前 |
+| 7 | Task 5.1 | "事件发射**之前**" |
+| 8 | DoD | "事件发射**前**" |
 
 ---
 
@@ -735,10 +794,11 @@ Story 4.2 将在"历史记录" Tab 中构建 UI，使用本 Story 提供的：
 - [ ] commands 通过 `.map_err(|e| e.to_string())` 转换错误
 - [ ] `commands/mod.rs` 注册 `pub mod history;`
 - [ ] `lib.rs` invoke_handler 注册 `get_history` 和 `delete_history`
-- [ ] `upload_engine.rs` 在 `upload:file-complete` 事件发射后调用 `storage::history::add_record()` 保存记录
+- [ ] `upload_engine.rs` 在 `upload:file-complete` 事件发射**前**调用 `storage::history::add_record()` 保存记录
+- [ ] 使用 `download_url.clone()` 构建 HistoryRecord（避免 move-after-use 编译错误）
 - [ ] 历史记录包含 `id`、`fileName`、`downloadUrl`、`fileSize`、`uploadedAt`、`expiresAt` 六个字段
 - [ ] `uploadedAt` 使用 `chrono::Utc::now().to_rfc3339()` 生成 ISO 8601 格式
-- [ ] `expiresAt` 使用 `now + Duration::days(config.lifetime)` 计算
+- [ ] `expiresAt` 使用 `now + chrono::TimeDelta::days(config.lifetime)` 计算
 - [ ] 保存失败仅 `log::error!`，不影响上传流程
 - [ ] `src/types/history.ts` 定义 `HistoryRecord` TypeScript 接口
 - [ ] `src/lib/tauri.ts` 添加 `getHistory()` 和 `deleteHistory()` IPC 封装
@@ -753,152 +813,3 @@ Story 4.2 将在"历史记录" Tab 中构建 UI，使用本 Story 提供的：
 - [ ] `cargo clippy --manifest-path src-tauri/Cargo.toml` 无 lint 警告
 - [ ] `pnpm test` 前端测试通过
 - [ ] `pnpm lint` ESLint 无错误
-
----
-
-## Review Feedback (Round 1)
-
-**Reviewer:** Story Reviewer (C3)
-**Verdict:** NEEDS_IMPROVE
-**Date:** 2026-02-11
-
-### Checklist Results
-
-| # | Item | Result | Feedback |
-|---|------|--------|----------|
-| RC-1 | AC clarity | PASS | All ACs use Given/When/Then format, specific and testable |
-| RC-2 | Task sequence | PASS | Dependencies correct, no circular deps, execution order valid |
-| RC-3 | Technical feasibility | **FAIL** | `download_url` use-after-move compile error in proposed upload_engine.rs integration code (see Issue 1) |
-| RC-4 | Requirement consistency | **FAIL** | AC-1/AC-3 save-after-emit ordering contradicts NFR11 crash safety goal (see Issue 2) |
-| RC-5 | Scope sizing | PASS | Reasonable scope for single sprint cycle |
-| RC-6 | Dependency documentation | PASS | Story 3-6/3-7 dependencies and 4-2/5-1 downstream correctly documented |
-| RC-7 | File scope declaration | PASS | New/modified/forbidden file lists complete and accurate |
-| RC-8 | API/method existence | PASS (with warnings) | All codebase references verified; 2 warnings on external API naming (see Warnings) |
-
-### Issue 1 (RC-3 FAIL): `download_url` use-after-move in upload_engine.rs
-
-**Location:** Technical Design section 4 / AC-1 / Task 5
-
-In `upload_engine.rs:207-216`, the existing code is:
-```rust
-let download_url = task.shards[0].download_url.clone().unwrap_or_default(); // String
-let _ = app.emit("upload:file-complete", FileCompletePayload {
-    task_id,           // task_id: String — MOVED
-    file_name: task.file_name.clone(),
-    download_url,      // download_url: String — MOVED
-    file_size: task.file_size,
-});
-```
-
-After the emit, `download_url` is **moved** into `FileCompletePayload` and no longer available. The story's proposed code then uses `download_url.clone()` to build `HistoryRecord` — this will not compile.
-
-**Fix:** Move the history record construction and save **BEFORE** the `app.emit()` call. This simultaneously fixes Issue 2 (crash safety ordering). The `download_url` variable is still available before the emit. The proposed code should become:
-
-```rust
-let download_url = task.shards[0].download_url.clone().unwrap_or_default();
-
-// Save history record BEFORE emit (NFR11: crash-safe persistence)
-let now = chrono::Utc::now();
-let history_record = crate::models::history::HistoryRecord {
-    id: uuid::Uuid::new_v4().simple().to_string(),
-    file_name: task.file_name.clone(),
-    download_url: download_url.clone(),
-    file_size: task.file_size,
-    uploaded_at: now.to_rfc3339(),
-    expires_at: (now + chrono::Duration::days(config.lifetime as i64)).to_rfc3339(),
-};
-if let Err(e) = crate::storage::history::add_record(&app, history_record) {
-    log::error!("Failed to save history record for '{}': {}", task.file_name, e);
-}
-
-// Emit event to frontend (download_url moves here)
-let _ = app.emit("upload:file-complete", FileCompletePayload {
-    task_id,
-    file_name: task.file_name.clone(),
-    download_url,
-    file_size: task.file_size,
-});
-
-Ok(())
-```
-
-### Issue 2 (RC-4 FAIL): NFR11 save ordering contradiction
-
-**Location:** AC-1, AC-3, Technical Design section 4
-
-AC-1 states: "保存操作在 `upload:file-complete` 事件发射之后". AC-3 restates the same ordering. The design rationale claims this provides crash safety (NFR11).
-
-**Contradiction:** Saving AFTER emit leaves a crash window between emit and save where the record would be lost. If the app crashes after emitting the event but before `add_record()` completes, the history record is permanently lost. Saving BEFORE emit eliminates this window entirely — the `upload:file-complete` event is merely a UI notification; if it is lost due to crash, the frontend will pick up the record on the next `loadHistory()` call when the app restarts.
-
-**Fix:** Update AC-1 and AC-3 to state save happens BEFORE emit. Change: "位于 `upload:file-complete` 事件发射之后" → "位于 `upload:file-complete` 事件发射之前". Update the data flow diagram accordingly. This also resolves Issue 1.
-
-### Warnings (RC-8)
-
-1. **`chrono::Duration::days()` deprecation:** In chrono 0.4.35+, `Duration::days()` is deprecated in favor of `chrono::TimeDelta::days()`. If the project picks up chrono >= 0.4.35, `cargo clippy` will emit deprecation warnings. Consider using `chrono::TimeDelta::days(config.lifetime as i64)` instead, or pin chrono version to `"0.4"` and accept the warning risk. Non-blocking.
-
-2. **`Store<tauri::Wry>` type parameter in `load_records`:** The `load_records` helper signature uses `Store<tauri::Wry>`. In tauri-plugin-store v2, the generic parameter may be `Store<R: Runtime>` rather than hard-coded `Wry`. Dev runner should verify the actual type returned by `app.store()` and adjust accordingly. Non-blocking.
-
-### API Verifications
-
-| Reference | Location | Codebase File | Result |
-|-----------|----------|---------------|--------|
-| `upload:file-complete` emit | AC-1 | `upload_engine.rs:208-216` | Confirmed |
-| `download_url` variable | Task 5 | `upload_engine.rs:207` | Confirmed (but moved at :213) |
-| `AppError::Storage(String)` | AC-4 | `error.rs:18` | Confirmed |
-| `models/mod.rs` TODO | Task 2 | `models/mod.rs:9` | Confirmed |
-| `storage/mod.rs` TODO | Task 3 | `storage/mod.rs:7` | Confirmed |
-| `commands/mod.rs` TODO | Task 4 | `commands/mod.rs:10` | Confirmed |
-| `tauri-plugin-store` registered | AC-2 | `lib.rs:15` | Confirmed |
-| `tauri-plugin-store` in Cargo.toml | AC-2 | `Cargo.toml:18` | Confirmed |
-| `invoke_handler` location | Task 4 | `lib.rs:21-25` | Confirmed |
-| `historyStore.ts` placeholder | AC-8 | `historyStore.ts:1-11` | Confirmed |
-| `lib/tauri.ts` structure | AC-7 | `tauri.ts:1-46` | Confirmed |
-| `setTaskFileComplete` action | cross-ref | `uploadStore.ts:18,129` | Confirmed |
-| `FileCompletePayload` interface | cross-ref | `types/upload.ts:61-66` | Confirmed |
-| `chrono` NOT in Cargo.toml | Task 1 | `Cargo.toml:15-26` | Confirmed (needs adding) |
-| `uuid` in Cargo.toml | Task 5 | `Cargo.toml:24` | Confirmed |
-| `chrono::Duration::days()` | Task 5 | external crate | Warning: possibly deprecated |
-| `Store<tauri::Wry>` | AC-4 | external crate | Warning: verify type param |
-
----
-
-## Review Feedback (Round 2)
-
-**Reviewer:** Story Reviewer (C3)
-**Verdict:** NEEDS_IMPROVE
-**Date:** 2026-02-11
-
-### Status
-
-Story document was **NOT updated** after Round 1 review. All Round 1 issues remain unresolved. The same two blocking issues persist:
-
-### Unresolved Issues (carried from Round 1)
-
-| # | Item | Result | Status |
-|---|------|--------|--------|
-| RC-1 | AC clarity | PASS | -- |
-| RC-2 | Task sequence | PASS | -- |
-| RC-3 | Technical feasibility | **FAIL** | UNRESOLVED — `download_url` use-after-move compile error still present in Technical Design section 4, upload_engine modification notes, and Task 5 |
-| RC-4 | Requirement consistency | **FAIL** | UNRESOLVED — AC-1 line 38 still says "位于 `upload:file-complete` 事件发射之后"; AC-3 line 56 repeats same ordering; data flow diagram (lines 405-406) shows emit-then-save; Design Decision 1 (line 431) repeats same; Task 5.1 (line 513) repeats same; DoD (line 738) repeats same |
-| RC-5 | Scope sizing | PASS | -- |
-| RC-6 | Dependency documentation | PASS | -- |
-| RC-7 | File scope declaration | PASS | -- |
-| RC-8 | API/method existence | PASS | -- |
-
-### Required Changes (unchanged from Round 1)
-
-**All 6 locations** that must be updated to fix both issues:
-
-1. **AC-1 line 38:** Change "位于 `upload:file-complete` 事件发射之后" to "位于 `upload:file-complete` 事件发射之前"
-2. **AC-3 line 56:** Change "upload_engine 在发射 `upload:file-complete` 事件后直接调用" to "upload_engine 在发射 `upload:file-complete` 事件前直接调用"
-3. **Technical Design section 4 (lines 288-310):** Move the history save code block BEFORE the `app.emit()` call, use `download_url.clone()` for HistoryRecord then let `download_url` move into `FileCompletePayload`
-4. **Data flow diagram (lines 403-409):** Swap ordering — show `storage::history::add_record()` BEFORE "发射 upload:file-complete 事件到前端"
-5. **Design Decision 1 (line 431):** Change "在发射 `upload:file-complete` 事件后直接调用" to "在发射 `upload:file-complete` 事件前直接调用"
-6. **upload_engine modification notes (lines 664-688):** Same as item 3 — move save block before emit block
-7. **Task 5.1 (line 513):** Change "事件发射之后" to "事件发射之前"
-8. **DoD (line 738):** Change "事件发射后" to "事件发射前"
-
-### Why This Matters
-
-- **RC-3 (compile error):** The existing code at `upload_engine.rs:207-216` moves `download_url` into `FileCompletePayload`. After the emit call, `download_url` is consumed. The story's proposed code tries to use `download_url.clone()` after the move — Rust ownership rules prevent this. This is not a style issue; it will not compile.
-- **RC-4 (crash safety):** NFR11 requires crash-safe persistence. Save-after-emit creates a crash window where the record is lost. Save-before-emit eliminates this window. The event is a UI notification only; if lost, the frontend loads records from storage on next startup.
