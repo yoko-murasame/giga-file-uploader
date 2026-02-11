@@ -509,6 +509,45 @@ So that 我可以快速将链接分享给他人。
 
 > **[Phase 2]** 系统通知（Tauri notification API）和系统提示音将在 Phase 2 中作为独立 Story 实现
 
+### Story 3.7: 底部操作栏与上传触发按钮
+
+As a 用户,
+I want 在待上传列表下方看到一个上传按钮来启动上传,
+So that 我可以在确认文件列表后一键触发上传流程。
+
+**Acceptance Criteria:**
+
+**Given** 用户已通过拖拽或文件选择器添加了文件到待上传队列
+**When** 查看上传页面底部
+**Then** 底部固定区域左侧显示文件统计信息："N 个文件，X.X GB"（文件数 + 总大小，使用 `formatFileSize` 格式化）
+**And** 右侧显示 [开始上传] 按钮（Primary 样式，品牌蓝 #3B82F6）
+**And** 保留期暂用默认值 7 天（硬编码，Story 5.1 替换为下拉选择器）
+
+**Given** 待上传队列为空
+**When** 查看底部区域
+**Then** [上传] 按钮置灰禁用，不可点击
+
+**Given** 用户点击 [上传] 按钮
+**When** 触发上传
+**Then** 调用 `uploadStore.startUpload(7)` 启动上传流程
+**And** 待上传文件转为活跃上传任务，进度开始显示
+
+**Given** 上传已在进行中
+**When** 查看底部区域
+**Then** 按钮不可再次点击（防止重复触发）
+
+**Given** 所有文件上传完成（`allUploadsComplete` 为 true）
+**When** 查看底部区域
+**Then** 左侧统计信息变为"N 个文件上传完成"
+**And** [开始上传] 按钮替换为 [清空列表] 按钮（Secondary 样式，白底灰边）
+**And** 点击 [清空列表] 后清除所有已完成的上传任务（`activeTasks` 清空、`allUploadsComplete` 重置）
+**And** 页面回到初始拖拽区状态，用户可以拖入新文件开始下一轮上传
+**And** 清空操作不弹确认对话框，直接执行（已完成的记录可在历史记录中查看）
+
+**And** 组件命名为 `UploadActionBar.tsx`，放在 `src/components/upload/` 下
+**And** 底部区域使用 `sticky bottom-0` 固定定位
+**And** UploadActionBar 具有适当的无障碍属性
+
 ## Epic 4: 历史记录与链接管理
 
 用户可以查看过去上传的文件记录，复制历史链接，了解链接过期状态，并管理（删除）记录。
@@ -585,8 +624,8 @@ So that 我可以根据需要控制链接的有效时间。
 **Acceptance Criteria:**
 
 **Given** 用户在"上传" Tab，待上传列表已有文件
-**When** 查看底部固定区域
-**Then** 上传按钮左侧显示保留期选择控件（使用 Radix UI DropdownMenu）（FR23）
+**When** 查看底部固定区域（UploadActionBar，已由 Story 3.7 实现）
+**Then** 上传按钮左侧新增保留期选择控件（使用 Radix UI DropdownMenu），替换原有的硬编码默认值（FR23）
 **And** 可选天数：3 / 5 / 7 / 14 / 30 / 60 / 100 天
 **And** 默认值为 7 天
 
