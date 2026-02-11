@@ -970,3 +970,22 @@ Story 4.1 需要在文件上传成功后自动保存记录到本地存储。可�
 - [ ] `cargo test` 所有测试通过
 - [ ] `pnpm test` 前端测试通过
 - [ ] `pnpm lint` ESLint 无错误
+
+---
+
+## Review Feedback
+
+### Review Round 1 — PASSED
+
+| # | Checklist Item | Result | Notes |
+|---|----------------|--------|-------|
+| RC-1 | AC clarity | PASS | 9 ACs, all specific/measurable/testable. FR14-FR17 + NFR3 fully covered. Epic 3.6 AC alignment confirmed against epics.md. |
+| RC-2 | Task sequence | PASS | 9 tasks with explicit dependency graph, no circular deps. Logical order: types -> store -> hooks -> UI -> tests -> quality. |
+| RC-3 | Technical feasibility | PASS | All integration points verified against codebase: `tauri::Emitter` already imported (upload_engine.rs:8), `AtomicU32` already imported (upload_engine.rs:5), `upload_file()` lines 173-177 confirm current state matches Story description, `shard.download_url: Option<String>` confirmed (models/upload.rs:75), Radix UI Tooltip/Progress already in use in UploadFileItem.tsx, lucide-react in use, `--color-success` defined in App.css. |
+| RC-4 | Requirement consistency | PASS | No contradictions. `setTaskFileComplete` vs `setTaskCompleted` coexistence justified (with/without downloadUrl). Design decisions well-documented. |
+| RC-5 | Scope sizing | PASS | 7 modified files + 2 new files. Single cohesive feature (completion + link + copy). Appropriately sized for one dev cycle. |
+| RC-6 | Dependency documentation | PASS | Story 3-3/3-4/3-5 as prerequisites (all completed). Forward deps to Story 4.1/4.2 documented with integration guidance. |
+| RC-7 | File scope declaration | PASS | All listed files verified to exist in codebase. Modification scopes match current code structure. 19 files explicitly in "no-modify" list. |
+| RC-8 | API/method existence | PASS | All referenced APIs verified in codebase: `app.emit()`, `AtomicU32::fetch_sub()`, `listen<T>()`, `navigator.clipboard.writeText()` (Web API, no research needed), Zustand `create()`, `React.memo`/`useCallback`/`useRef`, Radix UI `Progress`/`Tooltip`, Lucide React icons (`Copy`/`Check`/`CheckCircle2` — standard icons in lucide-react). |
+
+**Verdict: PASSED** — Story 3-6 document is complete, technically feasible, and ready for development.
