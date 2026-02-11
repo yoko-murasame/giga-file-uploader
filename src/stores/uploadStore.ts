@@ -101,6 +101,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
             ...existing,
             fileProgress: payload.fileProgress,
             shards: payload.shards,
+            speed: payload.speed,
           },
         },
       };

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatSpeed } from '@/lib/format';
 
 describe('formatFileSize', () => {
   it('should return "0 B" for 0 bytes', () => {
@@ -46,5 +46,47 @@ describe('formatFileSize', () => {
 
   it('should treat negative values as 0', () => {
     expect(formatFileSize(-100)).toBe('0 B');
+  });
+});
+
+describe('formatSpeed', () => {
+  it('should return "--" for 0 bytes/sec', () => {
+    expect(formatSpeed(0)).toBe('--');
+  });
+
+  it('should return "--" for negative values', () => {
+    expect(formatSpeed(-100)).toBe('--');
+  });
+
+  it('should return B/s for values less than 1024', () => {
+    expect(formatSpeed(512)).toBe('512 B/s');
+  });
+
+  it('should return KB/s for values in KB range', () => {
+    expect(formatSpeed(1024 * 100)).toBe('100.0 KB/s');
+  });
+
+  it('should return MB/s for values in MB range', () => {
+    expect(formatSpeed(1024 * 1024 * 12.5)).toBe('12.5 MB/s');
+  });
+
+  it('should return GB/s with 2 decimals for values in GB range', () => {
+    expect(formatSpeed(1024 * 1024 * 1024 * 1.5)).toBe('1.50 GB/s');
+  });
+
+  it('should format 1 B/s correctly', () => {
+    expect(formatSpeed(1)).toBe('1 B/s');
+  });
+
+  it('should format exact 1 KB/s correctly', () => {
+    expect(formatSpeed(1024)).toBe('1.0 KB/s');
+  });
+
+  it('should format exact 1 MB/s correctly', () => {
+    expect(formatSpeed(1024 * 1024)).toBe('1.0 MB/s');
+  });
+
+  it('should format exact 1 GB/s correctly', () => {
+    expect(formatSpeed(1024 * 1024 * 1024)).toBe('1.00 GB/s');
   });
 });

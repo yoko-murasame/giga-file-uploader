@@ -1,9 +1,10 @@
 //! Progress aggregator — tracks upload progress per file and shard,
 //! emits `upload:progress` events to the frontend at 50ms intervals.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -14,12 +15,36 @@ use crate::models::upload::{Shard, ShardStatus};
 /// Progress event emission interval in milliseconds.
 pub const PROGRESS_EMIT_INTERVAL_MS: u64 = 50;
 
+/// Sliding window size: 40 samples x 50ms = 2 seconds.
+const SPEED_WINDOW_SIZE: usize = 40;
+
+struct SpeedSample {
+    timestamp: Instant,
+    total_bytes: u64,
+}
+
+fn calculate_speed(samples: &VecDeque<SpeedSample>) -> u64 {
+    if samples.len() < 2 {
+        return 0;
+    }
+    let oldest = samples.front().unwrap();
+    let newest = samples.back().unwrap();
+    let duration = newest.timestamp.duration_since(oldest.timestamp);
+    let secs = duration.as_secs_f64();
+    if secs < 0.001 {
+        return 0;
+    }
+    let bytes_delta = newest.total_bytes.saturating_sub(oldest.total_bytes);
+    (bytes_delta as f64 / secs) as u64
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProgressPayload {
     pub task_id: String,
     pub file_progress: f64,
     pub shards: Vec<ShardProgressPayload>,
+    pub speed: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -120,6 +145,8 @@ impl ProgressAggregator {
     pub fn start_emitter(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
         let this = self.clone();
         tokio::spawn(async move {
+            let mut speed_trackers: HashMap<String, VecDeque<SpeedSample>> = HashMap::new();
+
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(PROGRESS_EMIT_INTERVAL_MS))
                     .await;
@@ -128,6 +155,8 @@ impl ProgressAggregator {
                 if tasks.is_empty() {
                     break;
                 }
+
+                let now = Instant::now();
 
                 for task in tasks.values() {
                     let mut total_bytes: u64 = 0;
@@ -149,6 +178,19 @@ impl ProgressAggregator {
                         });
                     }
 
+                    // Record speed sample and calculate speed
+                    let tracker = speed_trackers
+                        .entry(task.task_id.clone())
+                        .or_insert_with(VecDeque::new);
+                    tracker.push_back(SpeedSample {
+                        timestamp: now,
+                        total_bytes,
+                    });
+                    if tracker.len() > SPEED_WINDOW_SIZE {
+                        tracker.pop_front();
+                    }
+                    let speed = calculate_speed(tracker);
+
                     let file_progress = if task.file_size > 0 {
                         (total_bytes as f64 / task.file_size as f64) * 100.0
                     } else {
@@ -161,9 +203,13 @@ impl ProgressAggregator {
                             task_id: task.task_id.clone(),
                             file_progress,
                             shards: shard_payloads,
+                            speed,
                         },
                     );
                 }
+
+                // Clean up speed trackers for removed tasks
+                speed_trackers.retain(|key, _| tasks.contains_key(key));
             }
         })
     }
@@ -212,6 +258,7 @@ mod tests {
                 progress: 50.0,
                 status: "uploading".to_string(),
             }],
+            speed: 1024,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("\"taskId\""));
@@ -443,5 +490,51 @@ mod tests {
     #[test]
     fn test_progress_emit_interval_constant() {
         assert_eq!(PROGRESS_EMIT_INTERVAL_MS, 50);
+    }
+
+    #[test]
+    fn test_calculate_speed_basic() {
+        let mut samples = VecDeque::new();
+        let t0 = Instant::now();
+        let t1 = t0 + std::time::Duration::from_secs(1);
+        samples.push_back(SpeedSample {
+            timestamp: t0,
+            total_bytes: 0,
+        });
+        samples.push_back(SpeedSample {
+            timestamp: t1,
+            total_bytes: 1_048_576, // 1 MB
+        });
+        let speed = calculate_speed(&samples);
+        assert_eq!(speed, 1_048_576);
+    }
+
+    #[test]
+    fn test_calculate_speed_empty_samples() {
+        let samples: VecDeque<SpeedSample> = VecDeque::new();
+        assert_eq!(calculate_speed(&samples), 0);
+    }
+
+    #[test]
+    fn test_calculate_speed_single_sample() {
+        let mut samples = VecDeque::new();
+        samples.push_back(SpeedSample {
+            timestamp: Instant::now(),
+            total_bytes: 1000,
+        });
+        assert_eq!(calculate_speed(&samples), 0);
+    }
+
+    #[test]
+    fn test_progress_payload_speed_serialization() {
+        let payload = ProgressPayload {
+            task_id: "t1".to_string(),
+            file_progress: 75.0,
+            shards: vec![],
+            speed: 5_242_880,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"speed\""));
+        assert!(json.contains("5242880"));
     }
 }

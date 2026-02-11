@@ -33,6 +33,7 @@ export interface UploadTaskProgress {
   shards: ShardProgress[];
   status: 'uploading' | 'completed' | 'error';
   downloadUrl?: string;
+  speed?: number;
 }
 
 /** Progress event payload from Rust upload:progress event */
@@ -40,6 +41,7 @@ export interface ProgressPayload {
   taskId: string;
   fileProgress: number;
   shards: ShardProgress[];
+  speed: number;
 }
 
 /** Error event payload from Rust upload:error event */

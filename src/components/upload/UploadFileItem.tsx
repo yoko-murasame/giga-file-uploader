@@ -4,7 +4,7 @@ import { CheckCircle2, ChevronDown, ChevronRight, File, X } from 'lucide-react';
 import { Progress, Tooltip } from 'radix-ui';
 
 import CopyButton from '@/components/shared/CopyButton';
-import { formatFileSize } from '@/lib/format';
+import { formatFileSize, formatSpeed } from '@/lib/format';
 import { useUploadStore } from '@/stores/uploadStore';
 
 interface UploadFileItemProps {
@@ -108,9 +108,14 @@ function UploadFileItemInner({
           isCompleted ? (
             <CheckCircle2 size={18} className="shrink-0 text-success" />
           ) : (
-            <span className="shrink-0 text-sm font-medium text-text-primary">
-              {Math.round(taskProgress.fileProgress)}%
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-xs text-text-secondary">
+                {formatSpeed(taskProgress.speed ?? 0)}
+              </span>
+              <span className="text-sm font-medium text-text-primary">
+                {Math.round(taskProgress.fileProgress)}%
+              </span>
+            </div>
           )
         )}
 
