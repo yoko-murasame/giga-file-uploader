@@ -8,4 +8,13 @@ created: "2026-02-11"
 max_entries: 200
 cache_ttl_days: 30
 
-entries: []
+entries:
+  - id: "tauri-v2-windows-bundle-nsis-portable"
+    framework: "tauri"
+    framework_version: "2.x"
+    topic: "Windows bundle configuration NSIS portable WebView2"
+    tags: ["nsis", "portable", "windows", "bundle", "webview2", "installMode", "tauri-conf"]
+    path: "frameworks/tauri-v2/windows-bundle-nsis-portable.md"
+    created: "2026-02-12"
+    last_accessed: "2026-02-12"
+    status: "fresh"
