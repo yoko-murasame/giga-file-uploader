@@ -19,7 +19,7 @@ function UploadFileList({ files, onRemoveFile }: UploadFileListProps) {
 
   return (
     <Tooltip.Provider delayDuration={300}>
-      <ul className="flex-1 list-none overflow-y-auto">
+      <ul className="flex-1 list-none overflow-y-auto min-h-0">
         {activeTaskIds.map((taskId) => (
           <UploadFileItem key={taskId} id={taskId} taskId={taskId} onRemove={() => {}} />
         ))}

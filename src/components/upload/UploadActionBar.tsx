@@ -61,7 +61,7 @@ function UploadActionBar() {
   return (
     <nav
       aria-label="上传操作"
-      className="sticky bottom-0 border-t border-border bg-surface px-4 py-3"
+      className="shrink-0 border-t border-border bg-surface px-4 py-3"
     >
       <div className="flex items-center justify-between">
         <span className="text-sm text-text-secondary" aria-live="polite">

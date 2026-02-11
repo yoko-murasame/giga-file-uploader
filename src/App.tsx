@@ -26,7 +26,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg font-sans text-sm text-text-primary">
+    <div className="h-screen overflow-hidden bg-bg font-sans text-sm text-text-primary">
       <TabNav />
     </div>
   );

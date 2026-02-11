@@ -77,7 +77,7 @@ development_status:
 
   # Epic 6: Bug 修复与体验优化
   epic-6: in-progress
-  6-1-upload-action-bar-fixed-bottom-layout: ready-for-dev
+  6-1-upload-action-bar-fixed-bottom-layout: done
   6-2-disable-file-drop-zone-during-upload: backlog
   6-3-replace-app-icon: done
   6-4-streaming-progress-update-128kb-granularity: backlog

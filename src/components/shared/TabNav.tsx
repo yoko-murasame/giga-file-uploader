@@ -13,7 +13,7 @@ function TabNav() {
     <Tabs.Root
       value={currentTab}
       onValueChange={(value) => setCurrentTab(value as TabId)}
-      className="flex min-h-screen flex-col"
+      className="flex h-screen flex-col"
     >
       <Tabs.List className="flex border-b border-border bg-surface">
         <Tabs.Trigger
@@ -30,10 +30,10 @@ function TabNav() {
         </Tabs.Trigger>
       </Tabs.List>
 
-      <Tabs.Content value="upload" className="flex-1 bg-bg px-6 py-4">
+      <Tabs.Content value="upload" className="flex-1 overflow-hidden min-h-0 bg-bg px-6 py-4">
         <UploadPage />
       </Tabs.Content>
-      <Tabs.Content value="history" className="flex-1 bg-bg px-6 py-4">
+      <Tabs.Content value="history" className="flex-1 overflow-hidden min-h-0 bg-bg px-6 py-4">
         <HistoryPage />
       </Tabs.Content>
     </Tabs.Root>
