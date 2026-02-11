@@ -6,8 +6,8 @@
 //! and persistence to the `storage` layer.
 
 pub mod chunk_manager;
+pub mod retry_engine;
 pub mod upload_engine;
-// TODO: Story 3.4 - pub mod retry_engine;
 // TODO: Story 3.5 - pub mod progress;
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
+use tauri::Emitter;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::api::v1::GigafileApiV1;
@@ -13,6 +14,7 @@ use crate::error::AppError;
 use crate::models::file::FileEntry;
 use crate::models::upload::*;
 use crate::services::chunk_manager;
+use crate::services::retry_engine::{retry_upload_chunk, RetryPolicy, UploadErrorPayload};
 
 /// Default concurrent chunk uploads per shard.
 pub const DEFAULT_CONCURRENT_CHUNKS: usize = 8;
@@ -23,7 +25,7 @@ pub async fn start(
     files: Vec<FileEntry>,
     config: UploadConfig,
     api: &GigafileApiV1,
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     cancel_flags: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 ) -> crate::error::Result<Vec<String>> {
     // 1. Discover server
@@ -67,9 +69,19 @@ pub async fn start(
         let config = config.clone();
         let cancel_flags_clone = cancel_flags.clone();
         let task_id_clone = task_id.clone();
+        let task_id_for_upload = task_id.clone();
         let file_name = file.file_name.clone();
+        let app_clone = app.clone();
         tokio::spawn(async move {
-            let result = upload_file(task, &server_url, &config, cancel_flag).await;
+            let result = upload_file(
+                task,
+                &server_url,
+                &config,
+                cancel_flag,
+                app_clone,
+                task_id_for_upload,
+            )
+            .await;
             if let Err(e) = &result {
                 log::error!("Upload failed for file '{}': {}", file_name, e);
             }
@@ -90,23 +102,47 @@ async fn upload_file(
     server_url: &str,
     config: &UploadConfig,
     cancel_flag: Arc<AtomicBool>,
+    app: tauri::AppHandle,
+    task_id: String,
 ) -> crate::error::Result<()> {
     task.status = UploadStatus::Uploading;
 
     for shard in &mut task.shards {
         if cancel_flag.load(Ordering::Relaxed) {
             task.status = UploadStatus::Error;
+            let _ = app.emit(
+                "upload:error",
+                UploadErrorPayload {
+                    task_id: task_id.clone(),
+                    file_name: task.file_name.clone(),
+                    error_message: "Upload cancelled by user".into(),
+                },
+            );
             return Err(AppError::Internal("Upload cancelled by user".into()));
         }
-        upload_shard(
+        if let Err(e) = upload_shard(
             shard,
             &task.file_path,
             &task.file_name,
             server_url,
             config,
             &cancel_flag,
+            &app,
+            &task_id,
         )
-        .await?;
+        .await
+        {
+            task.status = UploadStatus::Error;
+            let _ = app.emit(
+                "upload:error",
+                UploadErrorPayload {
+                    task_id: task_id.clone(),
+                    file_name: task.file_name.clone(),
+                    error_message: e.to_string(),
+                },
+            );
+            return Err(e);
+        }
     }
 
     // Collect shard download URLs
@@ -120,6 +156,7 @@ async fn upload_file(
 
 /// Upload a single shard: first chunk serial (establishes Cookie session),
 /// then remaining chunks concurrently with ordered completion.
+#[allow(clippy::too_many_arguments)]
 async fn upload_shard(
     shard: &mut Shard,
     file_path: &str,
@@ -127,26 +164,63 @@ async fn upload_shard(
     server_url: &str,
     config: &UploadConfig,
     cancel_flag: &Arc<AtomicBool>,
+    app: &tauri::AppHandle,
+    task_id: &str,
 ) -> crate::error::Result<()> {
     shard.status = ShardStatus::Uploading;
     let cookie_jar = Arc::new(reqwest::cookie::Jar::default());
     let total_chunks = shard.chunks.len() as u32;
-    let api = GigafileApiV1::new()?;
+    let retry_policy = RetryPolicy::default();
 
     // --- First chunk serial (establish Cookie session) ---
     let first_chunk = &shard.chunks[0];
-    let data = read_chunk_data(file_path, first_chunk.offset, first_chunk.size).await?;
-    let params = ChunkUploadParams {
-        data,
-        file_name: file_name.to_string(),
-        upload_id: shard.upload_id.clone(),
-        chunk_index: 0,
-        total_chunks,
-        lifetime: config.lifetime,
-        server_url: server_url.to_string(),
-        cookie_jar: cookie_jar.clone(),
+    let first_data = read_chunk_data(file_path, first_chunk.offset, first_chunk.size).await?;
+    let resp = {
+        let mut first_data_opt = Some(first_data);
+        let file_path_owned = file_path.to_string();
+        let file_name_owned = file_name.to_string();
+        let upload_id = shard.upload_id.clone();
+        let server_url_owned = server_url.to_string();
+        let cookie_jar_clone = cookie_jar.clone();
+        let first_offset = first_chunk.offset;
+        let first_size = first_chunk.size;
+        let config_lifetime = config.lifetime;
+        retry_upload_chunk(
+            &retry_policy,
+            cancel_flag,
+            app,
+            task_id,
+            file_name,
+            0,
+            || {
+                let file_path = file_path_owned.clone();
+                let file_name = file_name_owned.clone();
+                let upload_id = upload_id.clone();
+                let server_url = server_url_owned.clone();
+                let cookie_jar = cookie_jar_clone.clone();
+                let first_data_taken = first_data_opt.take();
+                async move {
+                    let data = match first_data_taken {
+                        Some(d) => d,
+                        None => read_chunk_data(&file_path, first_offset, first_size).await?,
+                    };
+                    let api = GigafileApiV1::new()?;
+                    let params = ChunkUploadParams {
+                        data,
+                        file_name,
+                        upload_id,
+                        chunk_index: 0,
+                        total_chunks,
+                        lifetime: config_lifetime,
+                        server_url,
+                        cookie_jar,
+                    };
+                    api.upload_chunk(params).await
+                }
+            },
+        )
+        .await?
     };
-    let resp = api.upload_chunk(params).await?;
     shard.chunks[0].status = ChunkStatus::Completed;
 
     if total_chunks == 1 {
@@ -182,24 +256,42 @@ async fn upload_shard(
         let chunk_size = chunk.size;
         let lifetime = config.lifetime;
         let cancel_flag = cancel_flag.clone();
+        let app_clone = app.clone();
+        let task_id_owned = task_id.to_string();
+        let retry_policy = retry_policy.clone();
 
         let handle = tokio::spawn(async move {
-            // Read chunk data
-            let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
-
-            // Create API instance and upload
-            let api = GigafileApiV1::new()?;
-            let params = ChunkUploadParams {
-                data,
-                file_name,
-                upload_id,
+            let resp = retry_upload_chunk(
+                &retry_policy,
+                &cancel_flag,
+                &app_clone,
+                &task_id_owned,
+                &file_name,
                 chunk_index,
-                total_chunks,
-                lifetime,
-                server_url,
-                cookie_jar,
-            };
-            let resp = api.upload_chunk(params).await?;
+                || {
+                    let file_path = file_path.clone();
+                    let file_name = file_name.clone();
+                    let upload_id = upload_id.clone();
+                    let server_url = server_url.clone();
+                    let cookie_jar = cookie_jar.clone();
+                    async move {
+                        let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
+                        let api = GigafileApiV1::new()?;
+                        let params = ChunkUploadParams {
+                            data,
+                            file_name,
+                            upload_id,
+                            chunk_index,
+                            total_chunks,
+                            lifetime,
+                            server_url,
+                            cookie_jar,
+                        };
+                        api.upload_chunk(params).await
+                    }
+                },
+            )
+            .await?;
 
             // Ordered completion: wait for our turn
             loop {
