@@ -70,7 +70,7 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: 上传配置与离线体验
-  epic-5: in-progress
+  epic-5: done
   5-1-file-retention-period-selection: done
-  5-2-offline-mode-and-network-status-awareness: ready-for-dev
+  5-2-offline-mode-and-network-status-awareness: done
   epic-5-retrospective: optional
