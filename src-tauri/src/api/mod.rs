@@ -8,6 +8,7 @@
 //! This design satisfies NFR6 (API replaceability): when the gigafile.nu API changes,
 //! only the implementation within this module needs to be updated.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use crate::error::AppError;
@@ -22,6 +23,7 @@ pub struct ChunkUploadParams {
     pub lifetime: u32,
     pub server_url: String,
     pub cookie_jar: Arc<reqwest::cookie::Jar>,
+    pub progress_counter: Option<Arc<AtomicU64>>,
 }
 
 #[derive(Debug)]

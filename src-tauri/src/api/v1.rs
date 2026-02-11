@@ -3,6 +3,11 @@
 //! Handles server discovery via HTML scraping and provides stub implementations
 //! for upload_chunk and verify_upload (to be completed in Story 3.3).
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
+use bytes::Bytes;
+use futures_util::stream;
 use regex::Regex;
 
 use super::{
@@ -12,6 +17,28 @@ use crate::error::AppError;
 
 const GIGAFILE_HOME_URL: &str = "https://gigafile.nu/";
 const USER_AGENT: &str = "GigaFileUploader/0.1.0";
+
+/// 128KB progress reporting granularity (NFR2).
+const PROGRESS_CHUNK_SIZE: usize = 128 * 1024;
+
+/// Convert a `Vec<u8>` into a `Stream` that yields 128KB chunks and updates
+/// an optional `AtomicU64` progress counter after each chunk is yielded.
+fn progress_stream(
+    data: Vec<u8>,
+    counter: Option<Arc<AtomicU64>>,
+) -> impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> {
+    let chunks: Vec<Bytes> = data
+        .chunks(PROGRESS_CHUNK_SIZE)
+        .map(Bytes::copy_from_slice)
+        .collect();
+
+    stream::iter(chunks.into_iter().map(move |chunk| {
+        if let Some(ref c) = counter {
+            c.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+        }
+        Ok(chunk)
+    }))
+}
 
 pub struct GigafileApiV1 {
     client: reqwest::Client,
@@ -64,7 +91,9 @@ impl GigafileApi for GigafileApiV1 {
             .build()
             .map_err(|e| AppError::Internal(format!("Failed to build upload client: {}", e)))?;
 
-        // Build multipart form
+        // Build multipart form with streaming body for 128KB progress granularity
+        let data_len = params.data.len() as u64;
+        let body = reqwest::Body::wrap_stream(progress_stream(params.data, params.progress_counter));
         let form = reqwest::multipart::Form::new()
             .text("id", params.upload_id)
             .text("name", params.file_name)
@@ -73,7 +102,7 @@ impl GigafileApi for GigafileApiV1 {
             .text("lifetime", params.lifetime.to_string())
             .part(
                 "file",
-                reqwest::multipart::Part::bytes(params.data)
+                reqwest::multipart::Part::stream_with_length(body, data_len)
                     .file_name("blob")
                     .mime_str("application/octet-stream")
                     .map_err(|e| AppError::Internal(format!("MIME parse error: {}", e)))?,
@@ -206,6 +235,7 @@ mod tests {
             lifetime: 7,
             server_url: "https://46.gigafile.nu".into(),
             cookie_jar: jar,
+            progress_counter: None,
         };
         assert_eq!(params.file_name, "test.zip");
         assert_eq!(params.chunk_index, 0);
@@ -281,5 +311,45 @@ mod tests {
         // Compilation verification: check_connectivity exists and returns bool.
         // We do NOT assert the result because CI network state is unpredictable.
         let _result: bool = check_connectivity().await;
+    }
+
+    #[tokio::test]
+    async fn test_progress_stream_128kb_granularity() {
+        use futures_util::StreamExt;
+        use std::sync::atomic::AtomicU64;
+
+        // 300KB data = 128KB + 128KB + 44KB = 3 chunks
+        let data = vec![0xABu8; 300 * 1024];
+        let counter = Arc::new(AtomicU64::new(0));
+        let stream = progress_stream(data, Some(counter.clone()));
+
+        let items: Vec<_> = stream.collect().await;
+        assert_eq!(items.len(), 3, "300KB should produce 3 stream items (128KB + 128KB + 44KB)");
+        assert!(items.iter().all(|r| r.is_ok()), "All items should be Ok");
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            300 * 1024,
+            "Counter should equal total data size"
+        );
+
+        // Verify individual chunk sizes
+        assert_eq!(items[0].as_ref().unwrap().len(), 128 * 1024);
+        assert_eq!(items[1].as_ref().unwrap().len(), 128 * 1024);
+        assert_eq!(items[2].as_ref().unwrap().len(), 44 * 1024);
+    }
+
+    #[tokio::test]
+    async fn test_progress_stream_no_counter() {
+        use futures_util::StreamExt;
+
+        // Passing None as counter should not panic
+        let data = vec![0xCDu8; 256 * 1024]; // 256KB = 2 chunks
+        let stream = progress_stream(data, None);
+
+        let items: Vec<_> = stream.collect().await;
+        assert_eq!(items.len(), 2, "256KB should produce 2 stream items");
+        assert!(items.iter().all(|r| r.is_ok()), "All items should be Ok");
+        assert_eq!(items[0].as_ref().unwrap().len(), 128 * 1024);
+        assert_eq!(items[1].as_ref().unwrap().len(), 128 * 1024);
     }
 }

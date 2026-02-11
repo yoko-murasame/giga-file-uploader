@@ -262,7 +262,6 @@ async fn upload_shard(
 
     // --- First chunk serial (establish Cookie session) ---
     let first_chunk = &shard.chunks[0];
-    let first_chunk_size = first_chunk.size;
     let first_data = read_chunk_data(file_path, first_chunk.offset, first_chunk.size).await?;
     let resp = {
         let mut first_data_opt = Some(first_data);
@@ -274,6 +273,7 @@ async fn upload_shard(
         let first_offset = first_chunk.offset;
         let first_size = first_chunk.size;
         let config_lifetime = config.lifetime;
+        let first_progress_counter = counter.clone();
         retry_upload_chunk(
             &retry_policy,
             cancel_flag,
@@ -288,6 +288,7 @@ async fn upload_shard(
                 let server_url = server_url_owned.clone();
                 let cookie_jar = cookie_jar_clone.clone();
                 let first_data_taken = first_data_opt.take();
+                let progress_counter = first_progress_counter.clone();
                 async move {
                     let data = match first_data_taken {
                         Some(d) => d,
@@ -303,6 +304,7 @@ async fn upload_shard(
                         lifetime: config_lifetime,
                         server_url,
                         cookie_jar,
+                        progress_counter,
                     };
                     api.upload_chunk(params).await
                 }
@@ -311,11 +313,6 @@ async fn upload_shard(
         .await?
     };
     shard.chunks[0].status = ChunkStatus::Completed;
-
-    // Progress: accumulate first chunk bytes after successful upload
-    if let Some(ref c) = counter {
-        c.fetch_add(first_chunk_size, Ordering::Relaxed);
-    }
 
     if total_chunks == 1 {
         shard.download_url = resp.download_url;
@@ -375,6 +372,7 @@ async fn upload_shard(
                     let upload_id = upload_id.clone();
                     let server_url = server_url.clone();
                     let cookie_jar = cookie_jar.clone();
+                    let progress_counter = progress_counter.clone();
                     async move {
                         let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
                         let api = GigafileApiV1::new()?;
@@ -387,17 +385,13 @@ async fn upload_shard(
                             lifetime,
                             server_url,
                             cookie_jar,
+                            progress_counter,
                         };
                         api.upload_chunk(params).await
                     }
                 },
             )
             .await?;
-
-            // Progress: accumulate chunk bytes after successful upload
-            if let Some(ref c) = progress_counter {
-                c.fetch_add(chunk_size, Ordering::Relaxed);
-            }
 
             // Ordered completion: wait for our turn
             loop {
