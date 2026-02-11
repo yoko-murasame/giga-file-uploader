@@ -29,3 +29,16 @@ sessions:
     dev_runner:
       agent_id: "aab1b2a"
       timestamp: "2026-02-11T04:15:00Z"
+  "3-7":
+    story_creator:
+      agent_id: "ade5f42"
+      timestamp: "2026-02-11T12:05:00Z"
+    story_reviewer:
+      agent_id: "af836be"
+      timestamp: "2026-02-11T12:15:00Z"
+    dev_runner:
+      agent_id: "a672600"
+      timestamp: "2026-02-11T12:25:00Z"
+    review_runner:
+      agent_id: "af0069e"
+      timestamp: "2026-02-11T12:35:00Z"
