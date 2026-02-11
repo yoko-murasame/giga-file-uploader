@@ -859,3 +859,46 @@ AC-1 states: "保存操作在 `upload:file-complete` 事件发射之后". AC-3 r
 | `uuid` in Cargo.toml | Task 5 | `Cargo.toml:24` | Confirmed |
 | `chrono::Duration::days()` | Task 5 | external crate | Warning: possibly deprecated |
 | `Store<tauri::Wry>` | AC-4 | external crate | Warning: verify type param |
+
+---
+
+## Review Feedback (Round 2)
+
+**Reviewer:** Story Reviewer (C3)
+**Verdict:** NEEDS_IMPROVE
+**Date:** 2026-02-11
+
+### Status
+
+Story document was **NOT updated** after Round 1 review. All Round 1 issues remain unresolved. The same two blocking issues persist:
+
+### Unresolved Issues (carried from Round 1)
+
+| # | Item | Result | Status |
+|---|------|--------|--------|
+| RC-1 | AC clarity | PASS | -- |
+| RC-2 | Task sequence | PASS | -- |
+| RC-3 | Technical feasibility | **FAIL** | UNRESOLVED — `download_url` use-after-move compile error still present in Technical Design section 4, upload_engine modification notes, and Task 5 |
+| RC-4 | Requirement consistency | **FAIL** | UNRESOLVED — AC-1 line 38 still says "位于 `upload:file-complete` 事件发射之后"; AC-3 line 56 repeats same ordering; data flow diagram (lines 405-406) shows emit-then-save; Design Decision 1 (line 431) repeats same; Task 5.1 (line 513) repeats same; DoD (line 738) repeats same |
+| RC-5 | Scope sizing | PASS | -- |
+| RC-6 | Dependency documentation | PASS | -- |
+| RC-7 | File scope declaration | PASS | -- |
+| RC-8 | API/method existence | PASS | -- |
+
+### Required Changes (unchanged from Round 1)
+
+**All 6 locations** that must be updated to fix both issues:
+
+1. **AC-1 line 38:** Change "位于 `upload:file-complete` 事件发射之后" to "位于 `upload:file-complete` 事件发射之前"
+2. **AC-3 line 56:** Change "upload_engine 在发射 `upload:file-complete` 事件后直接调用" to "upload_engine 在发射 `upload:file-complete` 事件前直接调用"
+3. **Technical Design section 4 (lines 288-310):** Move the history save code block BEFORE the `app.emit()` call, use `download_url.clone()` for HistoryRecord then let `download_url` move into `FileCompletePayload`
+4. **Data flow diagram (lines 403-409):** Swap ordering — show `storage::history::add_record()` BEFORE "发射 upload:file-complete 事件到前端"
+5. **Design Decision 1 (line 431):** Change "在发射 `upload:file-complete` 事件后直接调用" to "在发射 `upload:file-complete` 事件前直接调用"
+6. **upload_engine modification notes (lines 664-688):** Same as item 3 — move save block before emit block
+7. **Task 5.1 (line 513):** Change "事件发射之后" to "事件发射之前"
+8. **DoD (line 738):** Change "事件发射后" to "事件发射前"
+
+### Why This Matters
+
+- **RC-3 (compile error):** The existing code at `upload_engine.rs:207-216` moves `download_url` into `FileCompletePayload`. After the emit call, `download_url` is consumed. The story's proposed code tries to use `download_url.clone()` after the move — Rust ownership rules prevent this. This is not a style issue; it will not compile.
+- **RC-4 (crash safety):** NFR11 requires crash-safe persistence. Save-after-emit creates a crash window where the record is lost. Save-before-emit eliminates this window. The event is a UI notification only; if lost, the frontend loads records from storage on next startup.
