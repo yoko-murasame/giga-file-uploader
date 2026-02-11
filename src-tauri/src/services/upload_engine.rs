@@ -110,6 +110,10 @@ async fn upload_file(
     for shard in &mut task.shards {
         if cancel_flag.load(Ordering::Relaxed) {
             task.status = UploadStatus::Error;
+            // TODO(Story 3.5): Distinguish cancellation from errors for frontend.
+            // Options: (a) add `cancelled: bool` field to UploadErrorPayload,
+            // or (b) emit a separate `upload:cancelled` event instead of reusing
+            // `upload:error`. Currently frontend must parse error_message string.
             let _ = app.emit(
                 "upload:error",
                 UploadErrorPayload {
@@ -204,6 +208,10 @@ async fn upload_shard(
                         Some(d) => d,
                         None => read_chunk_data(&file_path, first_offset, first_size).await?,
                     };
+                    // TODO: make GigafileApiV1 Clone to avoid per-retry construction.
+                    // Currently creates a new reqwest::Client (TLS context, connection pool)
+                    // on each retry attempt. Fix: impl Clone on GigafileApiV1, create once
+                    // outside closure, clone in. (Performance debt for follow-up story)
                     let api = GigafileApiV1::new()?;
                     let params = ChunkUploadParams {
                         data,
@@ -276,6 +284,8 @@ async fn upload_shard(
                     let cookie_jar = cookie_jar.clone();
                     async move {
                         let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
+                        // TODO: make GigafileApiV1 Clone to avoid per-retry construction.
+                        // See first-chunk closure above for details. (Performance debt)
                         let api = GigafileApiV1::new()?;
                         let params = ChunkUploadParams {
                             data,
