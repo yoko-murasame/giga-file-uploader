@@ -284,9 +284,9 @@ describe('uploadStore', () => {
       useUploadStore.setState({ allUploadsComplete: true });
       expect(useUploadStore.getState().allUploadsComplete).toBe(true);
 
-      useUploadStore.getState().addFiles([
-        { fileName: 'x.txt', filePath: '/path/x.txt', fileSize: 50 },
-      ]);
+      useUploadStore
+        .getState()
+        .addFiles([{ fileName: 'x.txt', filePath: '/path/x.txt', fileSize: 50 }]);
 
       await useUploadStore.getState().startUpload(7);
 
@@ -330,6 +330,37 @@ describe('uploadStore', () => {
       useUploadStore.getState().setAllComplete();
 
       expect(useUploadStore.getState().allUploadsComplete).toBe(true);
+    });
+  });
+
+  describe('clearCompletedTasks', () => {
+    it('should reset activeTasks to empty and allUploadsComplete to false', () => {
+      useUploadStore.setState({
+        activeTasks: {
+          'task-1': {
+            taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
+            fileProgress: 100,
+            shards: [],
+            status: 'completed',
+          },
+          'task-2': {
+            taskId: 'task-2',
+            fileName: 'b.txt',
+            fileSize: 200,
+            fileProgress: 100,
+            shards: [],
+            status: 'completed',
+          },
+        },
+        allUploadsComplete: true,
+      });
+
+      useUploadStore.getState().clearCompletedTasks();
+
+      expect(useUploadStore.getState().activeTasks).toEqual({});
+      expect(useUploadStore.getState().allUploadsComplete).toBe(false);
     });
   });
 });

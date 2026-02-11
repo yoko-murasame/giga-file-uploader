@@ -17,6 +17,7 @@ interface UploadState {
   setTaskCompleted: (taskId: string) => void;
   setTaskFileComplete: (taskId: string, downloadUrl: string) => void;
   setAllComplete: () => void;
+  clearCompletedTasks: () => void;
 }
 
 export const useUploadStore = create<UploadState>((set, get) => ({
@@ -143,4 +144,6 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     }),
 
   setAllComplete: () => set({ allUploadsComplete: true }),
+
+  clearCompletedTasks: () => set({ activeTasks: {}, allUploadsComplete: false }),
 }));
