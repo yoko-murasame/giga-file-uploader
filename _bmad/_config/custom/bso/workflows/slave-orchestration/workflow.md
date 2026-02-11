@@ -1,7 +1,7 @@
 ---
 name: slave-orchestration
 id: SO
-description: "SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Two-Phase Agent Creation, Review-Fix loops, and token budget management"
+description: "SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Unified Agent Dispatch, Review-Fix loops, and token budget management"
 module: bso
 agent: bso-sprint-slave
 type: core
@@ -13,7 +13,7 @@ status: draft
 
 # Slave Orchestration Workflow (SO)
 
-> BSO Core Workflow -- Batch 级别的 Story 编排。在单个 Slave Agent 上下文内，按序执行分配的 Stories（通常 3 个），驱动每个 Story 经历完整生命周期。使用 Two-Phase Agent Creation (P51)，管理 Review-Fix 闭环 (P22)，执行 per-Story 后处理（Git Squash P28、状态写入），并在每个 Story 完成后检查 Token Budget (P26)。
+> BSO Core Workflow -- Batch 级别的 Story 编排。在单个 Slave Agent 上下文内，按序执行分配的 Stories（通常 3 个），驱动每个 Story 经历完整生命周期。使用 Unified Agent Dispatch (P51)，管理 Review-Fix 闭环 (P22)，执行 per-Story 后处理（Git Squash P28、状态写入），并在每个 Story 完成后检查 Token Budget (P26)。
 
 ## Purpose
 
@@ -199,44 +199,39 @@ return:
 
 ### Step 3: Story Dispatch Loop
 
-**Goal:** 按序处理 batch 中每个 dispatchable Story，通过 Two-Phase Agent Creation 创建临时 Agent 执行阶段工作。
+**Goal:** 按序处理 batch 中每个 dispatchable Story，通过 Unified Agent Dispatch 创建临时 Agent 执行阶段工作。
 
 **Actions:**
 对每个 dispatchable Story:
 
 1. **确定目标 Agent:** 根据 Step 2 的 dispatch_plan，查 State-to-Agent Dispatch Table
-2. **Phase 1 -- 空 Agent 创建 (P51):**
-   - 向 Master 发送 `AGENT_CREATE_REQUEST`:
+2. **Unified Agent Dispatch (P51):**
+   - 向 Master 发送 `AGENT_DISPATCH_REQUEST`:
      ```yaml
-     agent_type: "C4"          # 目标 Agent 类型
+     agent_type: "C4"
      story_key: "3-1"
-     batch_id: "batch-1"
-     ```
-   - Master 创建空 Agent，返回 Agent ID
-   - 超时: `agent_creation_timeout_seconds`（默认 60s）
-   - 超时处理: 重试一次，仍然超时则标记 `needs-intervention`
-
-3. **Phase 2 -- 上下文注入 (TASK_ASSIGNMENT):**
-   - 向新 Agent 发送 `TASK_ASSIGNMENT`:
-     ```yaml
-     story_key: "3-1"
-     mode: "dev"                         # 根据 state 确定
+     mode: "dev"
      session_id: "sprint-2026-02-11-001"
+     report_to: "slave-batch-1"
      resident_contacts: { ... }
      config_overrides: { ... }
      ```
+   - Master 执行 Task() 创建 Agent，prompt 中包含完整业务上下文
+   - Agent 启动后立即开始工作（无需二次注入）
+   - 超时: `agent_creation_timeout_seconds`（默认 60s）
+   - 超时处理: 重试一次，仍然超时则标记 `needs-intervention`
 
-4. **等待 AGENT_COMPLETE:**
+3. **等待 AGENT_COMPLETE:**
    - 设置超时: `agent_timeout_seconds` (根据 Agent 类型配置)
    - 收到 AGENT_COMPLETE 后解析 return value
    - 超时: 标记 `needs-intervention`，继续下一个 Story
 
-5. **处理 return value:**
+4. **处理 return value:**
    - `status: "success"` --> 进入 Step 4 或 Step 5（取决于是否需要 Review）
    - `status: "failure"` / `"needs-intervention"` --> 记录错误，继续下一个 Story
    - `status: "scope-violation"` / `"test-regression"` --> 标记 `needs-intervention`
 
-6. **循环控制:** 如果 Story 从 C4 成功返回，自动调度 C5；如果 C5 返回 needs-fix，调度 C4 fix mode --> 进入 Step 4 管理闭环
+5. **循环控制:** 如果 Story 从 C4 成功返回，自动调度 C5；如果 C5 返回 needs-fix，调度 C4 fix mode --> 进入 Step 4 管理闭环
 
 **On Success:** 当前 Story 阶段完成，进入 Step 4 或 Step 5
 **On Failure:** 记录 per-story error，继续下一个 Story
@@ -412,20 +407,20 @@ Master                    Sprint Slave (SO)            Temp Agent (C4/C5/...)
   |                              |                              |
   |                      Step 3: Story Dispatch Loop           |
   |                              |                              |
-  |<-- AGENT_CREATE_REQUEST -----|                              |
-  |--- AGENT_CREATED (id) ----->|                              |
-  |                              |--- TASK_ASSIGNMENT --------->|
+  |<-- AGENT_DISPATCH_REQUEST ---|                              |
+  |                              |  (Agent starts with full context)
   |                              |                              |
   |                              |        (Agent executes)      |
   |                              |                              |
   |                              |<-- AGENT_COMPLETE -----------|
+  |                              |                (Agent exits naturally)
   |                              |                              |
   |                      Step 4: Review-Fix (if needed)        |
   |                              |                              |
-  |<-- AGENT_CREATE_REQUEST -----|  (create C5 for review)     |
-  |--- AGENT_CREATED (id) ----->|                              |
-  |                              |--- TASK_ASSIGNMENT --------->| (C5)
+  |<-- AGENT_DISPATCH_REQUEST ---|  (dispatch C5 for review)   |
+  |                              |  (Agent starts with full context)
   |                              |<-- AGENT_COMPLETE -----------|
+  |                              |                (Agent exits naturally)
   |                              |                              |
   |                      Step 5: Post-Processing               |
   |                        (squash, state write)               |
@@ -453,7 +448,8 @@ Master                    Sprint Slave (SO)            Temp Agent (C4/C5/...)
 | 22 | Review 渐进降级 | Step 4: 根据 review_round 渐进降低 review 标准，round 8 强制退出 |
 | 26 | Token 预算管理 | Step 6: 每 Story 完成后检查 token 用量，超出则暂停 batch |
 | 28 | Git squash per Story | Step 5: 可选的 per-Story commit 压缩，冲突时降级保留原始 commits |
-| 51 | Two-Phase Agent Creation | Step 3: Phase 1 创建空 Agent，Phase 2 注入业务上下文 |
+| 51 | Unified Agent Dispatch | Step 3: Slave 发 AGENT_DISPATCH_REQUEST 含完整参数，Master 一次性创建含上下文的 Agent |
+| 53 | Slave Strict Permission Boundary | 全流程: Slave 仅执行 ALLOWED 清单内的编排操作，严禁直接创建 Story、执行开发/测试/审查、调用 MCP 工具等越权行为。遇到未知状态标记 `needs-intervention` 并跳过 |
 
 ---
 

@@ -45,7 +45,7 @@ name,description,module,path
 "lessons-injection","Read accumulated lessons from _lessons-learned.md, filter by phase, sort by recency and relevance, inject top 10 entries into agent context","bso","_bmad/bso/workflows/lessons-injection/workflow.md"
 "lessons-recording","Capture error events from agent execution, distill into actionable lessons, and append to _lessons-learned.md","bso","_bmad/bso/workflows/lessons-recording/workflow.md"
 "precise-git-commit","Safe, precise git commits with per-file staging, sensitive file safeguard, configurable commit patterns, and post-Story squash support","bso","_bmad/bso/workflows/precise-git-commit/workflow.md"
-"slave-orchestration","SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Two-Phase Agent Creation, Review-Fix loops, and token budget management","bso","_bmad/bso/workflows/slave-orchestration/workflow.md"
+"slave-orchestration","SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Unified Agent Dispatch, Review-Fix loops, and token budget management","bso","_bmad/bso/workflows/slave-orchestration/workflow.md"
 "status-validation","Forced state validation before every agent dispatch, Epic-Status consistency check on startup, and atomic state file writes","bso","_bmad/bso/workflows/status-validation/workflow.md"
 "story-creation","C2: Create Story document from Epic definition with complete AC, tasks, subtasks, file scope, and technical references","bso","_bmad/bso/workflows/story-creation/workflow.md"
 "story-review","C3: Review Story quality + verify technical feasibility + API existence verification","bso","_bmad/bso/workflows/story-review/workflow.md"

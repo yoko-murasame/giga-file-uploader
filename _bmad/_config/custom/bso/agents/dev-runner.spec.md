@@ -51,7 +51,6 @@ Headless — no direct user interaction. Code and test output written to project
 - Trigger Knowledge Researcher when uncertain about framework/API usage — precision over speed
 - **MANDATORY: Knowledge Researcher Exclusive Research (Principle 33)** — 禁止直接调用 Context7 MCP (`resolve-library-id`, `query-docs`)、DeepWiki MCP (`read_wiki_structure`, `read_wiki_contents`, `ask_question`) 或 WebSearch/WebFetch 进行技术研究。需要技术研究时，通过 SendMessage 与常驻 KR 通信：`SendMessage(type="message", recipient="knowledge-researcher", content="RESEARCH_REQUEST: {\"story_key\":\"X-Y\",\"requesting_agent\":\"dev-runner-X-Y\",\"queries\":[...]}", summary="Research: {topic}")`。等待 KR 回复 RESEARCH_RESULT 消息后继续执行。理由：KR 有 LRU 缓存（200 条）和版本感知失效机制，直接调 MCP 会绕过缓存导致重复查询、浪费预算、且研究结果无法被其他 Agent 复用
 - **MANDATORY: Git Exit Gate (Principle 32)** — 在返回状态给 Orchestrator 之前，必须执行 precise-git-commit (U3)。如果没有文件变更则跳过提交但仍需检查。这是硬性退出条件，不是可选步骤
-- **Resume 策略 (Principle 36: Creator/Executor Resume, Reviewer Fresh)** — fix 模式下，Orchestrator 会尝试 resume 上一次 dev/fix 会话，将完整的代码理解和测试上下文带入修复过程。Agent 无需感知 resume 机制（由 Orchestrator 透明处理），但应意识到 fix 模式可能在保留上次对话上下文的情况下执行
 
 ---
 
@@ -83,7 +82,7 @@ BSO agents are **headless** — dispatched exclusively by the Sprint Orchestrato
 | Mode | Input | Behavior |
 |------|-------|----------|
 | `dev` | Story .md (approved) | Full TDD: read Story -> implement tasks -> write tests -> run tests -> commit |
-| `fix` | Story .md + review feedback | Targeted fix: snapshot tests -> apply fixes -> verify test count -> commit. **P36: fix 模式优先 resume 上一次 dev 会话，保留代码理解和测试上下文；resume 失败时 fallback 为新建对话** |
+| `fix` | Story .md + review feedback | Targeted fix: snapshot tests -> apply fixes -> verify test count -> commit |
 
 ---
 
@@ -250,7 +249,6 @@ Key implementation considerations:
 - All tests must pass 100% before returning success
 - Lessons injection: filter `_lessons-learned.md` by `[dev-execution]` phase tag, max 10 entries
 - Mandatory Principle 33 (KR Exclusive Research / Research Relay) and Principle 32 (Git Exit Gate) enforcement
-- Principle 36 (Resume Strategy): fix 模式优先 resume 上一次 dev 会话以保留代码理解上下文
 
 ---
 

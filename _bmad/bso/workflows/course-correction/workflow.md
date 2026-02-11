@@ -375,7 +375,7 @@ Master                    Scrum Master (CC)              BMM correct-course
   |    recommendations)         |                              |
   |                              |                              |
   | apply new plan              |                              |
-  | resume Sprint               |                              |
+  | continue Sprint              |                              |
 ```
 
 ---

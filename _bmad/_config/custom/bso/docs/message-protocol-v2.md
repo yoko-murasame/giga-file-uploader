@@ -8,12 +8,8 @@ All messages are transmitted via `SendMessage(type="message", content="MSG_TYPE:
 
 | Message Type | Direction | Description |
 |---|---|---|
-| AGENT_CREATE_REQUEST | Slave -> Master | Request temp Agent creation (no business context, only agent_type + role_hint) |
-| AGENT_CREATED | Master -> Slave | Temp Agent created (contains agent_name) |
-| AGENT_DESTROY_REQUEST | Slave -> Master | Request temp Agent destruction |
-| AGENT_DESTROYED | Master -> Slave | Temp Agent destroyed |
-| AGENT_ROSTER_BROADCAST | Master -> All Residents | Full Agent roster (residents + slaves + temps) |
-| TASK_ASSIGNMENT | Slave -> Temp Agent | Inject full business context (story_path + resident_contacts + report_to) |
+| AGENT_DISPATCH_REQUEST | Slave -> Master | One-step temp Agent dispatch (contains full params: agent_type + story_key + mode + report_to + resident_contacts + config_overrides) |
+| AGENT_ROSTER_BROADCAST | Master -> All Residents | Full Agent roster (residents only, sent once during init — NOT triggered by temp Agent changes per P54) |
 | SLAVE_BATCH_COMPLETE | Slave -> Master | Batch completion report, request self-destruction |
 | BATCH_PLAN_READY | SM -> Master | Batch plan completed |
 | COURSE_CORRECTION | SM -> Master | CC re-plan completed |
@@ -27,43 +23,23 @@ All messages are transmitted via `SendMessage(type="message", content="MSG_TYPE:
 
 | Message Type | Change |
 |---|---|
-| AGENT_COMPLETE | recipient changed from Master to Slave (determined by report_to field in TASK_ASSIGNMENT) |
+| AGENT_COMPLETE | recipient changed from Master to Slave (determined by report_to field in AGENT_DISPATCH_REQUEST) |
 | RESEARCH_REQUEST / RESEARCH_RESULT | Unchanged |
 
 ## Message Format Reference
 
-### AGENT_CREATE_REQUEST
+### AGENT_DISPATCH_REQUEST
 ```json
 {
-  "msg_type": "AGENT_CREATE_REQUEST",
+  "msg_type": "AGENT_DISPATCH_REQUEST",
   "agent_type": "story-creator",
-  "role_hint": "Story creator",
-  "requested_by": "slave-batch-1"
-}
-```
-
-### AGENT_CREATED
-```json
-{
-  "msg_type": "AGENT_CREATED",
-  "agent_name": "story-creator-3-1",
-  "agent_type": "story-creator"
-}
-```
-
-### TASK_ASSIGNMENT
-```json
-{
-  "msg_type": "TASK_ASSIGNMENT",
   "story_key": "3-1",
-  "story_path": "path/to/story-3-1.md",
   "mode": "create",
   "session_id": "sprint-xxx",
   "report_to": "slave-batch-1",
   "resident_contacts": {
     "knowledge-researcher": "knowledge-researcher",
-    "debugger": "debugger",
-    "e2e-live": "e2e-live"
+    "debugger": "debugger"
   },
   "config_overrides": {}
 }
@@ -103,7 +79,6 @@ All messages are transmitted via `SendMessage(type="message", content="MSG_TYPE:
   "roster": {
     "residents": ["scrum-master", "knowledge-researcher", "debugger"],
     "slaves": ["slave-batch-1"],
-    "temps": ["story-creator-3-1"]
   }
 }
 ```
@@ -161,25 +136,22 @@ All messages are transmitted via `SendMessage(type="message", content="MSG_TYPE:
 }
 ```
 
-## Two-Phase Agent Creation Sequence
+## Unified Agent Dispatch Sequence
 
 ```
-1. Slave -> Master:  AGENT_CREATE_REQUEST { agent_type, role_hint, requested_by }
-2. Master:           Task() create temp Agent (pure role activation prompt, no Story details)
-3. Master -> Slave:  AGENT_CREATED { agent_name }
-4. Master -> Residents: AGENT_ROSTER_BROADCAST { full roster }
-5. Slave -> Agent:   TASK_ASSIGNMENT { story_key, story_path, resident_contacts, report_to }
-6. Agent executes...
-7. Agent -> Slave:   AGENT_COMPLETE { status, results }
-8. Slave -> Master:  AGENT_DESTROY_REQUEST { agent_name }
-9. Master:           shutdown_request to Agent
-10. Master -> Slave: AGENT_DESTROYED { agent_name }
-11. Master -> Residents: AGENT_ROSTER_BROADCAST { updated roster }
+1. Slave -> Master:  AGENT_DISPATCH_REQUEST { agent_type, story_key, mode, session_id, report_to, resident_contacts, config_overrides }
+2. Master:           Task() create temp Agent with complete prompt (full business context injected)
+3. Agent executes... (starts immediately, no second injection needed)
+4. Agent -> Slave:   AGENT_COMPLETE { status, results } (via report_to)
+5. Agent:            Process exits naturally (no explicit destroy request)
+6. Master:           Receives idle notification (system automatic, lightweight)
 ```
 
 ## AGENT_ROSTER_BROADCAST Design Decisions
 
 - Full roster (not incremental) -- fault tolerant, missing one message is recoverable
+- Only sent ONCE during resident Agent initialization (Step 2), NOT triggered by temp Agent creation/destruction (P54)
 - Only sent to resident Agents (SM, KR, Debugger, E2E Live), not to Slaves or temps
-- Temp Agents receive "contact info" via TASK_ASSIGNMENT resident_contacts field
+- Temp Agents receive "contact info" via prompt injection (resident_contacts field in AGENT_DISPATCH_REQUEST)
 - Slaves know what they created, don't need broadcast
+- This eliminates 2N messages per temp Agent lifecycle (N = number of residents)

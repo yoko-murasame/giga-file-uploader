@@ -1,7 +1,7 @@
 ---
 name: slave-orchestration
 id: SO
-description: "SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Two-Phase Agent Creation, Review-Fix loops, and token budget management"
+description: "SO: Batch-level Story orchestration -- execute Stories sequentially through complete lifecycle with Unified Agent Dispatch, Review-Fix loops, and token budget management"
 module: bso
 agent: bso-sprint-slave
 type: core
@@ -25,7 +25,7 @@ updated: 2026-02-11
 
 **Goal:** Batch-level Story orchestration -- execute 3 Stories sequentially through complete lifecycle within a single Slave Agent context.
 
-**Description:** Dispatches temporary Agents (via Master proxy) for each Story phase. Manages Review-Fix loops, progressive degradation, token budget, and per-Story post-processing. Uses Two-Phase Agent Creation (P51) -- requests Master to create empty Agent, then injects business context via TASK_ASSIGNMENT.
+**Description:** Dispatches temporary Agents (via Master proxy) for each Story phase. Manages Review-Fix loops, progressive degradation, token budget, and per-Story post-processing. Uses Unified Agent Dispatch (P51) -- requests Master to create Agent with full business context in a single step.
 
 **Workflow Type:** Core (NEW)
 
@@ -37,7 +37,7 @@ updated: 2026-02-11
 |------|------|------|
 | 1 | Batch Initialization | Receive and validate batch params (batch_id, story_keys, session_id) |
 | 2 | State Validation | Read sprint-status.yaml, verify batch Story states via U4 |
-| 3 | Story Dispatch Loop | For each Story: Two-Phase create -> TASK_ASSIGNMENT -> await AGENT_COMPLETE |
+| 3 | Story Dispatch Loop | For each Story: Unified dispatch -> await AGENT_COMPLETE |
 | 4 | Review-Fix Management | Handle C4<->C5 fix loop with progressive degradation (P22) |
 | 5 | Per-Story Post-Processing | Git Squash (P28), Track Cleanup, state write |
 | 6 | Token Budget Check | Check budget after each Story (P26) |
@@ -150,7 +150,7 @@ batch_report:
 
 Sprint Slave (`bso-sprint-slave`) -- batch-level orchestrator, manages Story lifecycle within assigned batch.
 
-### Supporting Agents (via Master proxy, Two-Phase Creation P51)
+### Supporting Agents (via Master proxy, Unified Dispatch P51)
 
 - **Story Creator** (C2) -- dispatched for Stories in `backlog` state
 - **Story Reviewer** (C3) -- dispatched for Stories in `story-doc-improved` state
@@ -165,7 +165,7 @@ Sprint Slave (`bso-sprint-slave`) -- batch-level orchestrator, manages Story lif
 
 ### Workflow References
 
-- **Consumes:** All Core Workflows (C2-C6) via Two-Phase Agent Creation
+- **Consumes:** All Core Workflows (C2-C6) via Unified Agent Dispatch
 - **Triggers:** precise-git-commit (U3), status-validation (U4), git-squash (P28)
 - **Reports to:** Master via SLAVE_BATCH_COMPLETE message
 
@@ -191,14 +191,15 @@ Sprint Slave (`bso-sprint-slave`) -- batch-level orchestrator, manages Story lif
 
 ## Implementation Notes
 
-### Two-Phase Agent Creation (P51)
+### Unified Agent Dispatch (P51)
 
-每个 Story 阶段的 Agent 创建分两步进行:
+每个 Story 阶段的 Agent 创建通过一步完成:
 
-1. **Phase 1 -- Empty Agent Creation:** Slave 向 Master 发送 `AGENT_CREATE_REQUEST`，Master 创建空 Agent 并返回 Agent ID
-2. **Phase 2 -- Context Injection:** Slave 向新 Agent 发送 `TASK_ASSIGNMENT`，包含 Story 上下文、配置和 resident_contacts
+1. **Unified Dispatch:** Slave 向 Master 发送 `AGENT_DISPATCH_REQUEST`（含 agent_type, story_key, mode, session_id, report_to, resident_contacts, config_overrides），Master 执行 Task() 创建 Agent，prompt 中直接包含完整业务上下文
+2. **Agent 立即工作:** Agent 启动后直接开始执行，无需等待二次上下文注入
+3. **自然退出:** Agent 完成后发送 AGENT_COMPLETE 给 Slave（via report_to），然后 process 自然退出
 
-这种模式避免了 Agent 创建时上下文过大的问题，同时允许 Slave 控制注入时机。
+这种模式消除了两阶段来回通信，将每个临时 Agent 的消息量从 4+2N 降至 1。
 
 ### Story Dispatch Loop 内部流程
 
@@ -206,8 +207,8 @@ Sprint Slave (`bso-sprint-slave`) -- batch-level orchestrator, manages Story lif
 for each story_key in story_keys:
   1. Read current state from sprint-status.yaml
   2. Determine target Agent based on state (State-to-Agent Dispatch Table)
-  3. Two-Phase create Agent via Master
-  4. Send TASK_ASSIGNMENT with Story context
+  3. Dispatch Agent via Master (one-step)
+  4. Agent starts with injected context
   5. Await AGENT_COMPLETE (with timeout)
   6. Process return value:
      - If C4 returns success -> dispatch C5 (review)
@@ -244,7 +245,7 @@ for each story_key in story_keys:
 | 22 | Review progressive degradation | Step 4: 根据 review_round 渐进降级 review 标准 |
 | 26 | Token budget management | Step 6: 每 Story 完成后检查 token 预算 |
 | 28 | Git squash per Story | Step 5: 可选的 per-Story commit 压缩 |
-| 51 | Two-Phase Agent Creation | Step 3: 先创建空 Agent，再注入业务上下文 |
+| 51 | Unified Agent Dispatch | Step 3: Slave 发 AGENT_DISPATCH_REQUEST 含完整参数，Master 一次性创建含上下文的 Agent |
 
 ---
 

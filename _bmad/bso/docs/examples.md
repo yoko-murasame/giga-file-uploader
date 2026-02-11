@@ -72,16 +72,6 @@ Shows execution queue without running anything — verify scope before committin
 
 ## Common Scenarios
 
-### Scenario: Resume After Interruption
-
-BSO automatically detects where it left off:
-
-1. Sprint was interrupted (token limit, network error, etc.)
-2. Run the same command again
-3. BSO reads sprint-status.yaml → finds Stories in intermediate states
-4. Orphan state detection offers recovery options
-5. Resumes from the last checkpoint
-
 ### Scenario: Knowledge Cache Hit
 
 1. Story A needed vue-easytable virtual scrolling docs → Knowledge Researcher researched and cached
@@ -163,7 +153,7 @@ Error: BMM Module not found at _bmad/bmm/
 
 **What BSO Does:** Pauses sprint, generates progress report, saves state.
 
-**Fix:** Resume with the same command — BSO picks up from where it stopped.
+**Fix:** Start a new Sprint session with the same command — BSO reads sprint-status.yaml and picks up incomplete Stories from their current state.
 
 #### Knowledge Cache Stale
 

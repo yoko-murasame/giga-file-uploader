@@ -25,7 +25,7 @@ Layer 2: Temporary Agent + Resident Services  - Execution layer: Story-level wor
 |  Responsibilities (only 4):                                   |
 |  1. Startup parameter guidance (Epic, options, status path)   |
 |  2. Create/destroy resident Agents per config.yaml slots      |
-|  3. Respond to Slave AGENT_CREATE/DESTROY requests            |
+|  3. Respond to Slave AGENT_DISPATCH_REQUEST (one-step creation)            |
 |  4. AGENT_ROSTER_BROADCAST (full roster to resident Agents)   |
 +--+----------+----------+----------+-------------------------+
    |          |          |          |
@@ -52,14 +52,15 @@ Layer 2: Temporary Agent + Resident Services  - Execution layer: Story-level wor
 | P48 | SM Epic Authority | SM is the sole authority on Story grouping and priority ordering |
 | P49 | Debugger Log Persistence | Every debug analysis appended to debug-journal.md. Rebuild from journal on context full |
 | P50 | E2E Live Stateless Service | Stateless request-response service. No cross-request browser session |
-| P51 | Two-Phase Agent Creation | Temp Agent creation: Master creates empty shell + Slave injects business context |
+| P51 | Unified Agent Dispatch | Slave sends AGENT_DISPATCH_REQUEST with full params, Master creates Agent with complete context in one step |
 | P52 | Sequential Slave Default | Slaves run serially by default. Parallel Slaves require STATUS_WRITE_REQUEST serialization |
+| P54 | No Temp Agent Roster Broadcast | Temp Agent creation/destruction does NOT trigger AGENT_ROSTER_BROADCAST. Broadcast only at resident init |
 
 ## Master Step Structure (6 Steps)
 
 | Step | Responsibility | Source |
 |------|---------------|--------|
-| Step 0 | Principle Recitation (Master-related only: P45/P47/P51/P52) | Simplified existing Step 0 |
+| Step 0 | Principle Recitation (Master-related only: P45/P47/P51/P52/P54) | Simplified existing Step 0 |
 | Step 1 | Startup + Lock + sprint-status path confirmation | Existing Step 1 + new interaction |
 | Step 2 | Resident Slot Initialization (iterate config.yaml resident_slots) | Extended from existing Step 1.5 |
 | Step 3 | SM Planning (send Epic to SM, await BATCH_PLAN_READY, show preview) | New |
@@ -68,14 +69,14 @@ Layer 2: Temporary Agent + Resident Services  - Execution layer: Story-level wor
 
 ## Message Flow
 
-### Two-Phase Agent Creation (P51)
+### Unified Agent Dispatch (P51)
 
 ```
-Slave -> Master:  AGENT_CREATE_REQUEST { agent_type: "story-creator", role_hint: "Story creator", requested_by: "slave-batch-1" }
-Master:           Task() creates temp Agent, prompt = pure role activation (no Story details)
-Master -> Slave:  AGENT_CREATED { agent_name: "story-creator-3-1" }
-Master -> Residents: AGENT_ROSTER_BROADCAST { full roster }
-Slave -> Agent:   TASK_ASSIGNMENT { story_key, story_path, resident_contacts, report_to: "slave-batch-1" }
+Slave -> Master:  AGENT_DISPATCH_REQUEST { agent_type: "story-creator", story_key: "3-1", mode: "create", session_id: "sprint-xxx", report_to: "slave-batch-1", resident_contacts: {...}, config_overrides: {...} }
+Master:           Task() creates temp Agent with complete prompt (full business context)
+Agent:            Starts working immediately, sends AGENT_COMPLETE to Slave (via report_to)
+Agent:            Process exits naturally — no destroy request needed
+Master:           Receives idle notification (system automatic)
 ```
 
 ## Resident Agent Slots

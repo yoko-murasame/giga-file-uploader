@@ -31,11 +31,37 @@ Headless — no direct user interaction. All communication via SendMessage proto
 - P31 Thin Dispatcher (Slave is the real thin dispatcher)
 - P32 Git Exit Gate (enforced on temporary Agents, not Slave itself)
 - P46 Slave Batch Isolation — each Slave owns one batch (default 3 Stories), serial mode grants exclusive sprint-status.yaml write access
-- P51 Two-Phase Agent Creation — Slave requests Master to create empty shell Agent, then Slave injects business context via TASK_ASSIGNMENT
+- P51 Unified Agent Dispatch — Slave sends AGENT_DISPATCH_REQUEST with full params, Master creates Agent with complete context in one step
 - P4 Single state-write entry (U4 atomic-write)
 - P5 State is single source of truth
 - P22 Review progressive degradation
 - P26 Token budget awareness
+- **P53 Slave Strict Permission Boundary (MANDATORY)** — Slave 是纯编排者，严禁执行任何超出编排职责的操作。违反此原则视为严重架构违规
+
+## Slave Permission Boundary (P53 -- MANDATORY)
+
+### ALLOWED Operations (Slave 仅允许以下操作):
+
+1. **读取 sprint-status.yaml** — 验证 Story 状态，构建 dispatch plan
+2. **发送 AGENT_DISPATCH_REQUEST** — 向 Master 请求创建临时 Agent（包含完整 dispatch 参数：agent_type + story_key + mode + resident_contacts + config_overrides）
+3. **发送 TASK_ASSIGNMENT** — 向已创建的临时 Agent 注入业务上下文
+4. **接收 AGENT_COMPLETE** — 从临时 Agent 接收执行结果
+5. **原子写入 sprint-status.yaml** — 通过 U4 更新 Story 状态（仅状态字段）
+6. **管理 Review-Fix 循环** — 根据 Dispatch Table 路由状态转换
+7. **Token 预算检查** — 监控 batch 级别的 token 消耗
+8. **发送 SLAVE_BATCH_COMPLETE** — 向 Master 汇报 batch 结果
+
+### FORBIDDEN Operations (严禁，违反即为 BUG):
+
+1. **禁止直接创建或修改 Story 文件** — Story 创建/修改由 Story Creator Agent 执行，Slave 只能调度它
+2. **禁止直接执行开发、测试、代码审查** — 这些由 Dev Runner / Review Runner 等临时 Agent 执行
+3. **禁止修改 Epic 文件或任何业务文档**
+4. **禁止调用 MCP 工具做技术研究** — 技术研究由 Knowledge Researcher 常驻 Agent 处理
+5. **禁止调用 WebSearch / WebFetch / Context7 等外部工具**
+6. **禁止执行任何不在 State-to-Agent Dispatch Table 中定义的操作** — 遇到未知状态必须标记 `needs-intervention` 并跳过
+7. **禁止自行决定 Story 优先级或重新排序** — Story 顺序由 SM 决定（P48），Slave 严格按 batch 分配顺序执行
+8. **禁止修改 config.yaml 或任何配置文件**
+9. **禁止直接与用户交互** — 所有用户交互通过 Master 代理
 
 ## Team Communication Protocol
 
@@ -43,8 +69,7 @@ Headless — no direct user interaction. All communication via SendMessage proto
 
 | Message Type | Direction | Content |
 |---|---|---|
-| AGENT_CREATE_REQUEST | Slave -> Master | `{ agent_type, role_hint, requested_by }` (no business context) |
-| AGENT_DESTROY_REQUEST | Slave -> Master | `{ agent_name, requested_by }` |
+| AGENT_DISPATCH_REQUEST | Slave -> Master | `{ agent_type, story_key, mode, session_id, report_to, resident_contacts, config_overrides }` |
 | TASK_ASSIGNMENT | Slave -> Temp Agent | `{ story_key, story_path, mode, session_id, resident_contacts, report_to, config_overrides }` |
 | SLAVE_BATCH_COMPLETE | Slave -> Master | `{ batch_id, stories_completed, stories_failed, batch_report }` |
 
@@ -52,17 +77,15 @@ Headless — no direct user interaction. All communication via SendMessage proto
 
 | Message Type | Direction | Content |
 |---|---|---|
-| AGENT_CREATED | Master -> Slave | `{ agent_name, agent_type }` |
-| AGENT_DESTROYED | Master -> Slave | `{ agent_name }` |
 | AGENT_COMPLETE | Temp Agent -> Slave | `{ status, story_key, mode, results }` |
 
-### Two-Phase Agent Creation (P51)
+### Unified Agent Dispatch (P51)
 
-Phase 1 — Slave sends `AGENT_CREATE_REQUEST` to Master with only `agent_type` and `role_hint`. Master creates an empty shell Agent and returns `AGENT_CREATED` with the `agent_name`.
+Slave sends `AGENT_DISPATCH_REQUEST` to Master with complete dispatch parameters (`agent_type`, `story_key`, `mode`, `session_id`, `report_to: self`, `resident_contacts`, `config_overrides`). Master creates the Agent via `Task()` with a prompt that includes all business context — the Agent starts working immediately upon creation.
 
-Phase 2 — Slave sends `TASK_ASSIGNMENT` directly to the newly created Agent, injecting full business context (`story_key`, `story_path`, `mode`, `session_id`, `resident_contacts`, `report_to: self`, `config_overrides`).
+Agent completes work and sends `AGENT_COMPLETE` directly to Slave (via `report_to` field). Agent process exits naturally after completion — no explicit destroy request needed.
 
-This separation ensures Master never handles business context — it only manages Agent lifecycle.
+This eliminates the two-phase round-trip (CREATE_REQUEST -> CREATED -> TASK_ASSIGNMENT -> DESTROY_REQUEST -> DESTROYED), reducing per-Agent messages from 4+2N to 1.
 
 ## Result Delivery Protocol
 
@@ -123,19 +146,17 @@ Step 1: Receive batch params (batch_id, story_keys[], session_id, resident_conta
 Step 2: Read sprint-status.yaml, validate batch Story states
 Step 3: Orchestration loop (for each Story):
   3.1: Pre-dispatch validation (U4) — read current state, determine agent_type + mode from Dispatch Table
-  3.2: AGENT_CREATE_REQUEST -> Master (agent_type + role_hint only)
-  3.3: Wait for AGENT_CREATED
-  3.4: TASK_ASSIGNMENT -> Temp Agent (full context + resident_contacts + report_to: self)
-  3.5: Wait for AGENT_COMPLETE (from temp Agent)
-  3.6: U4 atomic-write sprint-status.yaml (update Story state based on AGENT_COMPLETE result)
-  3.7: AGENT_DESTROY_REQUEST -> Master
-  3.8: Review-Fix loop (inherit existing Step 7.5 logic):
+  3.2: AGENT_DISPATCH_REQUEST -> Master (agent_type + story_key + mode + resident_contacts + config_overrides)
+  3.3: Wait for Agent to start (Master creates with full context, Agent begins immediately)
+  3.4: Wait for AGENT_COMPLETE (from temp Agent)
+  3.5: U4 atomic-write sprint-status.yaml (update Story state based on AGENT_COMPLETE result)
+  3.6: Review-Fix loop (inherit existing Step 7.5 logic):
        - If new state is `fix`: loop back to 3.1 with fix mode
        - If new state is `story-doc-improved`: loop back to 3.1 with revise mode
        - Track review_fix_rounds per Story
        - Progressive degradation (P22): if rounds exceed max_review_rounds, mark needs-intervention
-  3.9: Per-Story post-processing (Git Squash, Track Cleanup)
-  3.10: Token budget check (P26) — if budget exhausted, break loop, report partial
+  3.7: Per-Story post-processing (Git Squash, Track Cleanup)
+  3.8: Token budget check (P26) — if budget exhausted, break loop, report partial
 Step 4: Generate batch report (aggregate all Story results)
 Step 5: SLAVE_BATCH_COMPLETE -> Master, wait for shutdown
 ```

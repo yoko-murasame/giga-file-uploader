@@ -152,7 +152,7 @@ When Master dispatches a batch for execution. One Slave per batch.
 
 **Key Capabilities:**
 - Serial Story execution within a batch
-- Two-Phase Agent Creation via Master (AGENT_CREATE_REQUEST / TASK_ASSIGNMENT)
+- Unified Agent Dispatch via Master (AGENT_DISPATCH_REQUEST — one-step creation with full context)
 - sprint-status.yaml read/write (exclusive in serial mode)
 - Batch completion reporting (SLAVE_BATCH_COMPLETE)
 

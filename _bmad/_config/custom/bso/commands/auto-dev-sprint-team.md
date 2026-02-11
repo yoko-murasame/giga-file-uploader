@@ -24,7 +24,7 @@ architecture: "master-slave"
 **架构特点：**
 - Master 零业务上下文 (P45) -- 不分析 sprint-status.yaml 的依赖关系/执行排序；可读取用于 UI 展示（Epic 选择菜单）
 - 常驻插槽声明式配置 (P47) -- resident_slots 驱动，不硬编码
-- 两阶段 Agent 创建 (P51) -- Master 创建空壳，Slave 注入业务上下文
+- 统一 Agent 调度 (P51) -- Slave 发 AGENT_DISPATCH_REQUEST，Master 一次性创建含完整上下文的 Agent
 - 串行 Slave 默认 (P52) -- max_concurrent_slaves: 1
 
 ## Command Format
@@ -61,8 +61,10 @@ P45: Master Zero Business Context -- I do NOT analyze sprint-status.yaml
      All business analysis is delegated to SM.
 P47: Resident Slot Pluggability -- Resident Agents are declared in config.yaml resident_slots.
      I iterate config to create/destroy, never hardcode any resident Agent logic.
-P51: Two-Phase Agent Creation -- Temp Agents are created as empty shells (phase 1).
-     Slave is responsible for injecting business context (phase 2).
+P51: Unified Agent Dispatch -- Slave sends AGENT_DISPATCH_REQUEST with full params.
+     Master creates Agent with complete context in one step. No two-phase round-trip.
+P54: No Temp Agent Roster Broadcast -- Temp Agent creation/destruction does NOT trigger
+     AGENT_ROSTER_BROADCAST. Residents get contact info via TASK_ASSIGNMENT resident_contacts.
 P52: Sequential Slave Default -- max_concurrent_slaves: 1.
      Next Slave batch starts only after the previous Slave completes.
 P48: SM Epic Authority -- SM is the sole authority on Story grouping
@@ -205,9 +207,11 @@ P48: SM Epic Authority -- SM is the sole authority on Story grouping
      Wait for idle (timeout: slot.startup_timeout seconds)
    ```
 
-3. **Send AGENT_ROSTER_BROADCAST to all created residents:**
+3. **Send AGENT_ROSTER_BROADCAST to all created residents (one-time only):**
    ```yaml
-   # After ALL residents are created, broadcast full roster to each
+   # After ALL residents are created, broadcast full roster ONCE.
+   # This is the ONLY roster broadcast in the entire Sprint lifecycle.
+   # Temp Agent creation/destruction does NOT trigger roster broadcast (P54).
    For each created_resident:
      SendMessage:
        type: "message"
@@ -316,16 +320,12 @@ For each batch in sm_plan.batches:
   2. ENTER MESSAGE WAIT LOOP
      Loop until SLAVE_BATCH_COMPLETE or timeout:
 
-     [AGENT_CREATE_REQUEST from Slave]
-       -> Task() create temp Agent with requested subagent_type + prompt
-       -> Reply AGENT_CREATED {name, subagent_type} to Slave
-       -> AGENT_ROSTER_BROADCAST to all residents (updated roster)
-
-     [AGENT_DESTROY_REQUEST from Slave]
-       -> SendMessage shutdown_request to target Agent
-       -> Wait shutdown_response (approve) or timeout
-       -> Reply AGENT_DESTROYED {name} to Slave
-       -> AGENT_ROSTER_BROADCAST to all residents (updated roster)
+     [AGENT_DISPATCH_REQUEST from Slave]
+       -> Parse: { agent_type, story_key, mode, session_id, report_to, resident_contacts, config_overrides }
+       -> Task() create temp Agent with complete prompt:
+          - Include full business context (story_key, mode, session_id, resident_contacts, report_to, config_overrides)
+          - Agent starts working immediately upon creation, no second injection needed
+       -> No AGENT_ROSTER_BROADCAST (P54: temp Agent changes do not trigger roster broadcast)
 
      [SLAVE_BATCH_COMPLETE from Slave]
        -> Record batch result {batch_id, status, summary}
@@ -341,7 +341,12 @@ For each batch in sm_plan.batches:
      [COURSE_CORRECTION from SM (unsolicited)]
        -> Pause current Slave dispatch
        -> Update remaining batch plan per SM instructions
-       -> Resume with updated plan
+       -> Continue with updated plan
+
+     [Temp Agent idle notification (system automatic)]
+       -> Temp Agent completed and process exited naturally
+       -> No action needed (Agent already sent AGENT_COMPLETE to Slave via report_to)
+       -> Log: [MASTER] Temp Agent {name} exited (idle notification)
 
   3. TIMEOUT HANDLING
      If slave_config.slave_timeout_seconds exceeded:
@@ -431,11 +436,8 @@ For each batch in sm_plan.batches:
 |---------|-----------|---------|
 | `SM_PLANNING_REQUEST` | Master -> SM | Step 3: request batch plan |
 | `BATCH_PLAN_READY` | SM -> Master | Step 3: plan ready for preview |
-| `AGENT_ROSTER_BROADCAST` | Master -> all residents | Step 2/4: roster changed |
-| `AGENT_CREATE_REQUEST` | Slave -> Master | Step 4: Slave needs temp Agent |
-| `AGENT_CREATED` | Master -> Slave | Step 4: temp Agent created |
-| `AGENT_DESTROY_REQUEST` | Slave -> Master | Step 4: Slave done with temp Agent |
-| `AGENT_DESTROYED` | Master -> Slave | Step 4: temp Agent destroyed |
+| `AGENT_ROSTER_BROADCAST` | Master -> all residents | Step 2: one-time roster after resident init (P54: NOT triggered by temp Agent changes) |
+| `AGENT_DISPATCH_REQUEST` | Slave -> Master | Step 4: Slave needs temp Agent (contains full dispatch params) |
 | `SLAVE_BATCH_COMPLETE` | Slave -> Master | Step 4: batch finished |
 | `CC_TRIGGER` | User -> Master | Step 4: user requests course correction |
 | `CC_REQUEST` | Master -> SM | Step 4: forward CC to SM |
@@ -457,7 +459,7 @@ For each batch in sm_plan.batches:
 | E5 | SM planning timeout | 3 | Fatal | Terminate Sprint |
 | E6 | SM returns planning error | 3 | Fatal | Display error, terminate |
 | E7 | Slave timeout | 4 | Error | Mark batch abnormal, force shutdown, next batch |
-| E8 | AGENT_CREATE_REQUEST invalid | 4 | Warning | Reply error to Slave, continue |
+| E8 | AGENT_DISPATCH_REQUEST invalid | 4 | Warning | Reply error to Slave, continue |
 | E9 | Resident shutdown timeout | 5 | Warning | Force continue TeamDelete |
 | E10 | TeamDelete failed | 5 | Warning | Log warning, manual cleanup needed |
 | E11 | Lock release failed | 5 | Warning | Log warning, manual cleanup needed |
@@ -491,11 +493,12 @@ All user interaction points are auto-confirmed after 3 seconds:
 |---|-----------|-------------|
 | P45 | Master Zero Business Context | Master does not analyze sprint-status.yaml for Story dependencies, file scopes, or execution ordering. MAY read it for UI display (Epic listing for user selection in Step 1.5). All business analysis delegated to SM. |
 | P47 | Resident Slot Pluggability | Resident Agents declared in config.yaml resident_slots. Master iterates config to create/destroy. Adding a new resident = add config entry, no Master code change. |
-| P51 | Two-Phase Agent Creation | Temp Agents created by Master as empty shells (phase 1: subagent_type + minimal params). Slave injects business context (phase 2: Story content, review findings, etc). |
+| P51 | Unified Agent Dispatch | Slave sends AGENT_DISPATCH_REQUEST with full params (agent_type, story_key, mode, resident_contacts, etc). Master creates Agent with complete context in one step. No two-phase round-trip. |
 | P52 | Sequential Slave Default | max_concurrent_slaves: 1. One Slave completes before next starts. Future: increase for parallel batch execution. |
 | P48 | SM Epic Authority | SM is the sole authority on Story grouping and priority ordering. Master/Slave do NOT override SM decisions. |
 | P2 | Degrade over abort | Non-SM resident failures degrade gracefully. Slave timeout marks abnormal, continues. |
 | P13 | Zombie Lock Prevention | PID + timestamp dual verification via U2. |
+| P54 | No Temp Agent Roster Broadcast | Temp Agent creation/destruction does NOT trigger AGENT_ROSTER_BROADCAST. Roster broadcast only happens once during resident initialization (Step 2). |
 
 ---
 
@@ -505,7 +508,7 @@ All user interaction points are auto-confirmed after 3 seconds:
 User              Master (C1-TEAM)          SM (resident)        Slave           KR/Others (resident)
  |                     |                       |                   |                  |
  |-- [epic] + opts --> |                       |                   |                  |
- |                 Step 0: Recite P45/47/51/52 |                   |                  |
+ |                 Step 0: Recite P45/47/51/52/54 |                |                  |
  |                 Step 1: Lock + Status Path  |                   |                  |
  |                 Step 1.5: Epic Selection    |                   |                  |
  |                   (read status, show menu)  |                   |                  |
@@ -516,6 +519,7 @@ User              Master (C1-TEAM)          SM (resident)        Slave          
  |                     |-- Task(SM) ---------->|                   |                  |
  |                     |-- Task(KR) ------------------------------------------>       |
  |                     |-- ROSTER_BROADCAST -->|                   |        --------> |
+ |                     |  (one-time only, P54) |                   |                  |
  |                 Step 3: SM Planning         |                   |                  |
  |                     |-- SM_PLANNING_REQ --->|                   |                  |
  |                     |<-- BATCH_PLAN_READY --|                   |                  |
@@ -523,11 +527,12 @@ User              Master (C1-TEAM)          SM (resident)        Slave          
  |-- Confirm -->       |                       |                   |                  |
  |                 Step 4: Slave Loop          |                   |                  |
  |                     |-- Task(Slave-b1) -----------------------> |                  |
- |                     |<-- AGENT_CREATE_REQ --|                   |                  |
- |                     |-- Task(temp) ---------|-----------------> |                  |
- |                     |-- AGENT_CREATED ------|-----------------> |                  |
+ |                     |<-- AGENT_DISPATCH_REQ |                   |                  |
+ |                     |-- Task(temp,full ctx) |------------------> |  (Agent works)   |
  |                     |                       |                   |--RESEARCH_REQ--> |
  |                     |                       |                   |<-RESEARCH_RES--  |
+ |                     |                       |  temp->Slave: AGENT_COMPLETE         |
+ |                     |  (idle notification)  |  temp exits naturally                |
  |                     |<-- SLAVE_BATCH_COMPLETE ------------------|                  |
  |                     |-- shutdown Slave ------|-----------------> |                  |
  |                     |   (repeat for next batch)                 |                  |
