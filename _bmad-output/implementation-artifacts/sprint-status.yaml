@@ -76,10 +76,10 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: Bug 修复与体验优化
-  epic-6: backlog
+  epic-6: in-progress
   6-1-upload-action-bar-fixed-bottom-layout: backlog
   6-2-disable-file-drop-zone-during-upload: backlog
-  6-3-replace-app-icon: backlog
+  6-3-replace-app-icon: ready-for-dev
   6-4-streaming-progress-update-128kb-granularity: backlog
   6-5-realtime-upload-speed-display: backlog
   6-6-windows-dual-bundle-nsis-and-portable: backlog
