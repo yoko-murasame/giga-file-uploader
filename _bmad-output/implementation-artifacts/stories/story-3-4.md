@@ -743,3 +743,22 @@ Rust 事件发射：
 - [ ] 单元测试：should_emit_warning 节流逻辑
 - [ ] `cargo clippy` 无警告
 - [ ] `cargo test` 所有测试通过
+
+---
+
+## Review History
+
+### Review Round 1 — 2026-02-11
+
+**Verdict: PASSED**
+
+| # | Checklist Item | Result | Feedback |
+|---|----------------|--------|----------|
+| RC-1 | AC clarity | PASS | All 7 ACs are specific, measurable, and independently testable |
+| RC-2 | Task sequence | PASS | Task 1 -> Task 2/3 -> Task 4, no circular dependencies |
+| RC-3 | Technical feasibility | PASS | All line references verified against actual codebase; error type flow (reqwest -> AppError::Network -> retryable) is correct |
+| RC-4 | Requirement consistency | PASS | No contradictions; threshold/throttle/cancel semantics internally consistent |
+| RC-5 | Scope sizing | PASS | 1 new file + 2 modifications; well-scoped for single dev cycle |
+| RC-6 | Dependency documentation | PASS | Story 3-3 prerequisite and Story 3.5/3.6 forward dependencies documented |
+| RC-7 | File scope declaration | PASS | All paths verified; services/mod.rs TODO placeholder confirmed at line 10 |
+| RC-8 | API/method existence | PASS | All APIs verified in codebase: GigafileApiV1, upload_chunk, ChunkUploadParams, AppError variants, tauri::Emitter |
