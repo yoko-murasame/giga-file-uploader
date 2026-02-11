@@ -38,3 +38,8 @@ export async function startUpload(
 export async function cancelUpload(taskId: string): Promise<void> {
   return invoke<void>('cancel_upload', { taskId });
 }
+
+/** Copy text to system clipboard. */
+export async function copyToClipboard(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text);
+}

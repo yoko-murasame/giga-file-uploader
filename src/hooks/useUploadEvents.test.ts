@@ -36,6 +36,8 @@ describe('useUploadEvents', () => {
     await vi.waitFor(() => {
       expect(mockListeners.has('upload:progress')).toBe(true);
       expect(mockListeners.has('upload:error')).toBe(true);
+      expect(mockListeners.has('upload:file-complete')).toBe(true);
+      expect(mockListeners.has('upload:all-complete')).toBe(true);
     });
   });
 
@@ -43,7 +45,7 @@ describe('useUploadEvents', () => {
     const { unmount } = renderHook(() => useUploadEvents());
 
     await vi.waitFor(() => {
-      expect(mockUnlisteners).toHaveLength(2);
+      expect(mockUnlisteners).toHaveLength(4);
     });
 
     unmount();

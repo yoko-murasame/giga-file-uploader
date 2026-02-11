@@ -13,7 +13,7 @@ vi.mock('@/lib/tauri', () => ({
 
 describe('uploadStore', () => {
   beforeEach(() => {
-    useUploadStore.setState({ pendingFiles: [], activeTasks: {} });
+    useUploadStore.setState({ pendingFiles: [], activeTasks: {}, allUploadsComplete: false });
   });
 
   describe('addFiles', () => {
@@ -274,6 +274,62 @@ describe('uploadStore', () => {
       await useUploadStore.getState().startUpload(7);
 
       expect(startUploadMock).not.toHaveBeenCalled();
+    });
+
+    it('should reset allUploadsComplete to false', async () => {
+      const { startUpload: startUploadMock } = await import('@/lib/tauri');
+      vi.mocked(startUploadMock).mockResolvedValueOnce(['task-x']);
+
+      // Set allUploadsComplete to true first
+      useUploadStore.setState({ allUploadsComplete: true });
+      expect(useUploadStore.getState().allUploadsComplete).toBe(true);
+
+      useUploadStore.getState().addFiles([
+        { fileName: 'x.txt', filePath: '/path/x.txt', fileSize: 50 },
+      ]);
+
+      await useUploadStore.getState().startUpload(7);
+
+      expect(useUploadStore.getState().allUploadsComplete).toBe(false);
+    });
+  });
+
+  describe('setTaskFileComplete', () => {
+    it('should set status to completed, fileProgress to 100, and downloadUrl', () => {
+      useUploadStore.setState({
+        activeTasks: {
+          'task-1': {
+            taskId: 'task-1',
+            fileName: 'a.txt',
+            fileSize: 100,
+            fileProgress: 80,
+            shards: [],
+            status: 'uploading',
+          },
+        },
+      });
+
+      useUploadStore.getState().setTaskFileComplete('task-1', 'https://46.gigafile.nu/abc123');
+
+      const task = useUploadStore.getState().activeTasks['task-1'];
+      expect(task.status).toBe('completed');
+      expect(task.fileProgress).toBe(100);
+      expect(task.downloadUrl).toBe('https://46.gigafile.nu/abc123');
+    });
+
+    it('should not modify state for non-existent task', () => {
+      useUploadStore.getState().setTaskFileComplete('non-existent', 'https://example.com');
+      expect(useUploadStore.getState().activeTasks['non-existent']).toBeUndefined();
+    });
+  });
+
+  describe('setAllComplete', () => {
+    it('should set allUploadsComplete to true', () => {
+      expect(useUploadStore.getState().allUploadsComplete).toBe(false);
+
+      useUploadStore.getState().setAllComplete();
+
+      expect(useUploadStore.getState().allUploadsComplete).toBe(true);
     });
   });
 });

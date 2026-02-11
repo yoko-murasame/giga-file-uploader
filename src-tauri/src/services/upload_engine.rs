@@ -8,6 +8,8 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::sync::{Mutex, Semaphore};
 
+use serde::Serialize;
+
 use crate::api::v1::GigafileApiV1;
 use crate::api::{ChunkUploadParams, GigafileApi};
 use crate::error::AppError;
@@ -16,6 +18,21 @@ use crate::models::upload::*;
 use crate::services::chunk_manager;
 use crate::services::progress::ProgressAggregator;
 use crate::services::retry_engine::{retry_upload_chunk, RetryPolicy, UploadErrorPayload};
+
+/// File upload completion event payload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCompletePayload {
+    pub task_id: String,
+    pub file_name: String,
+    pub download_url: String,
+    pub file_size: u64,
+}
+
+/// All files complete event payload.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AllCompletePayload {}
 
 /// Default concurrent chunk uploads per shard.
 pub const DEFAULT_CONCURRENT_CHUNKS: usize = 8;
@@ -39,6 +56,9 @@ pub async fn start(
 
     // Start progress emitter once for this batch
     progress.start_emitter();
+
+    // File completion counter for all-complete detection
+    let remaining_files = Arc::new(AtomicU32::new(files.len() as u32));
 
     for file in files {
         let task_id = uuid::Uuid::new_v4().simple().to_string();
@@ -88,6 +108,8 @@ pub async fn start(
         let task_id_for_upload = task_id.clone();
         let file_name = file.file_name.clone();
         let app_clone = app.clone();
+        let app_for_complete = app.clone();
+        let remaining_files_clone = remaining_files.clone();
         let progress_clone = progress.clone();
         tokio::spawn(async move {
             let result = upload_file(
@@ -107,6 +129,11 @@ pub async fn start(
             progress_clone.remove_task(&task_id_clone).await;
             let mut flags = cancel_flags_clone.lock().await;
             flags.remove(&task_id_clone);
+
+            // Check if all files have completed (success or failure)
+            if remaining_files_clone.fetch_sub(1, Ordering::AcqRel) == 1 {
+                let _ = app_for_complete.emit("upload:all-complete", AllCompletePayload {});
+            }
         });
 
         task_ids.push(task_id);
@@ -175,6 +202,18 @@ async fn upload_file(
         task.download_url = task.shards[0].download_url.clone();
     }
     task.status = UploadStatus::Completed;
+
+    // Emit upload:file-complete event with download URL (first shard URL as representative)
+    let download_url = task.shards[0].download_url.clone().unwrap_or_default();
+    let _ = app.emit(
+        "upload:file-complete",
+        FileCompletePayload {
+            task_id,
+            file_name: task.file_name.clone(),
+            download_url,
+            file_size: task.file_size,
+        },
+    );
 
     Ok(())
 }

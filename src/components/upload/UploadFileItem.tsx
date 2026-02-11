@@ -1,8 +1,9 @@
 import { memo, useCallback, useState } from 'react';
 
-import { ChevronDown, ChevronRight, File, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, File, X } from 'lucide-react';
 import { Progress, Tooltip } from 'radix-ui';
 
+import CopyButton from '@/components/shared/CopyButton';
 import { formatFileSize } from '@/lib/format';
 import { useUploadStore } from '@/stores/uploadStore';
 
@@ -64,6 +65,7 @@ function UploadFileItemInner({
   }, [id, onRemove, prefersReducedMotion]);
 
   const isUploading = !!taskProgress;
+  const isCompleted = taskProgress?.status === 'completed';
   const fileName = taskProgress?.fileName ?? fileNameProp ?? '';
   const fileSize = taskProgress?.fileSize ?? fileSizeProp ?? 0;
   const hasMultipleShards = taskProgress && taskProgress.shards.length > 1;
@@ -103,9 +105,13 @@ function UploadFileItemInner({
         </div>
 
         {isUploading && (
-          <span className="shrink-0 text-sm font-medium text-text-primary">
-            {Math.round(taskProgress.fileProgress)}%
-          </span>
+          isCompleted ? (
+            <CheckCircle2 size={18} className="shrink-0 text-success" />
+          ) : (
+            <span className="shrink-0 text-sm font-medium text-text-primary">
+              {Math.round(taskProgress.fileProgress)}%
+            </span>
+          )
         )}
 
         {!isUploading && (
@@ -124,7 +130,7 @@ function UploadFileItemInner({
         <div className="mt-2">
           <Progress.Root className="h-2 w-full overflow-hidden rounded-full bg-border">
             <Progress.Indicator
-              className="h-full bg-brand"
+              className={`h-full ${isCompleted ? 'bg-success' : 'bg-brand'}`}
               style={{
                 width: `${taskProgress.fileProgress}%`,
                 transition: 'width 300ms ease',
@@ -132,7 +138,34 @@ function UploadFileItemInner({
             />
           </Progress.Root>
 
-          {hasMultipleShards && (
+          {isCompleted && taskProgress.downloadUrl && (
+            <div className="mt-1.5 flex items-center gap-1">
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <a
+                    href={taskProgress.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 truncate text-xs text-brand hover:underline"
+                  >
+                    {taskProgress.downloadUrl}
+                  </a>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    className="max-w-xs break-all rounded-md bg-text-primary px-2 py-1 text-xs text-surface"
+                    sideOffset={4}
+                  >
+                    {taskProgress.downloadUrl}
+                    <Tooltip.Arrow className="fill-text-primary" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+              <CopyButton text={taskProgress.downloadUrl} />
+            </div>
+          )}
+
+          {!isCompleted && hasMultipleShards && (
             <div className="mt-2">
               <button
                 type="button"

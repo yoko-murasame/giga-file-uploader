@@ -7,6 +7,7 @@ import type { FileEntry, PendingFile, ProgressPayload, UploadTaskProgress } from
 interface UploadState {
   pendingFiles: PendingFile[];
   activeTasks: Record<string, UploadTaskProgress>;
+  allUploadsComplete: boolean;
   addFiles: (entries: FileEntry[]) => void;
   removeFile: (id: string) => void;
   clearFiles: () => void;
@@ -14,11 +15,14 @@ interface UploadState {
   updateProgress: (payload: ProgressPayload) => void;
   setTaskError: (taskId: string) => void;
   setTaskCompleted: (taskId: string) => void;
+  setTaskFileComplete: (taskId: string, downloadUrl: string) => void;
+  setAllComplete: () => void;
 }
 
 export const useUploadStore = create<UploadState>((set, get) => ({
   pendingFiles: [],
   activeTasks: {},
+  allUploadsComplete: false,
 
   addFiles: (entries) =>
     set((state) => ({
@@ -77,6 +81,7 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     set((state) => ({
       pendingFiles: [],
       activeTasks: { ...state.activeTasks, ...newActiveTasks },
+      allUploadsComplete: false,
     }));
   },
 
@@ -119,4 +124,23 @@ export const useUploadStore = create<UploadState>((set, get) => ({
         },
       };
     }),
+
+  setTaskFileComplete: (taskId, downloadUrl) =>
+    set((state) => {
+      const existing = state.activeTasks[taskId];
+      if (!existing) return state;
+      return {
+        activeTasks: {
+          ...state.activeTasks,
+          [taskId]: {
+            ...existing,
+            status: 'completed',
+            fileProgress: 100,
+            downloadUrl,
+          },
+        },
+      };
+    }),
+
+  setAllComplete: () => set({ allUploadsComplete: true }),
 }));

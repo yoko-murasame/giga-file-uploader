@@ -3,7 +3,12 @@ import { useEffect } from 'react';
 import { listen } from '@/lib/tauri';
 import { useUploadStore } from '@/stores/uploadStore';
 
-import type { ProgressPayload, UploadErrorPayload } from '@/types/upload';
+import type {
+  AllCompletePayload,
+  FileCompletePayload,
+  ProgressPayload,
+  UploadErrorPayload,
+} from '@/types/upload';
 
 export function useUploadEvents() {
   useEffect(() => {
@@ -28,6 +33,33 @@ export function useUploadEvents() {
         return;
       }
       cleanups.push(unlisten2);
+
+      const unlisten3 = await listen<FileCompletePayload>(
+        'upload:file-complete',
+        (event) => {
+          useUploadStore.getState().setTaskFileComplete(
+            event.payload.taskId,
+            event.payload.downloadUrl,
+          );
+        },
+      );
+      if (cancelled) {
+        unlisten3();
+        return;
+      }
+      cleanups.push(unlisten3);
+
+      const unlisten4 = await listen<AllCompletePayload>(
+        'upload:all-complete',
+        () => {
+          useUploadStore.getState().setAllComplete();
+        },
+      );
+      if (cancelled) {
+        unlisten4();
+        return;
+      }
+      cleanups.push(unlisten4);
     };
 
     setup();

@@ -32,6 +32,7 @@ export interface UploadTaskProgress {
   fileProgress: number;
   shards: ShardProgress[];
   status: 'uploading' | 'completed' | 'error';
+  downloadUrl?: string;
 }
 
 /** Progress event payload from Rust upload:progress event */
@@ -55,3 +56,15 @@ export interface RetryWarningPayload {
   retryCount: number;
   errorMessage: string;
 }
+
+/** File complete event payload from Rust upload:file-complete event */
+export interface FileCompletePayload {
+  taskId: string;
+  fileName: string;
+  downloadUrl: string;
+  fileSize: number;
+}
+
+/** All files complete event payload from Rust upload:all-complete event */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface AllCompletePayload {}
