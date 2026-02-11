@@ -81,6 +81,6 @@ development_status:
   6-2-disable-file-drop-zone-during-upload: done
   6-3-replace-app-icon: done
   6-4-streaming-progress-update-128kb-granularity: done
-  6-5-realtime-upload-speed-display: review
+  6-5-realtime-upload-speed-display: done
   6-6-windows-dual-bundle-nsis-and-portable: done
   epic-6-retrospective: optional
