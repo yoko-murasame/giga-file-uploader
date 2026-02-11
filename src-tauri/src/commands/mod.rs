@@ -8,6 +8,7 @@ pub mod files;
 
 pub mod upload;
 pub mod history;
+pub mod network;
 pub mod settings;
 
 #[cfg(test)]

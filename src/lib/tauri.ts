@@ -65,3 +65,8 @@ export async function getSettings(): Promise<AppSettings> {
 export async function saveSettings(settings: AppSettings): Promise<void> {
   return invoke<void>('save_settings', { settingsData: settings });
 }
+
+/** Check if gigafile.nu is reachable. Returns true if online, false if offline. */
+export async function checkNetwork(): Promise<boolean> {
+  return invoke<boolean>('check_network');
+}

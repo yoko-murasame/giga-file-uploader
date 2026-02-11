@@ -1,10 +1,12 @@
 import { useState } from 'react';
 
+import { useAppStore } from '@/stores/appStore';
 import { useUploadStore } from '@/stores/uploadStore';
 import { formatFileSize } from '@/lib/format';
 import RetentionSelector from '@/components/upload/RetentionSelector';
 
 function UploadActionBar() {
+  const isOnline = useAppStore((s) => s.isOnline);
   const pendingFiles = useUploadStore((s) => s.pendingFiles);
   const activeTasks = useUploadStore((s) => s.activeTasks);
   const allUploadsComplete = useUploadStore((s) => s.allUploadsComplete);
@@ -27,7 +29,9 @@ function UploadActionBar() {
     hasActiveTasks && !isUploading && !allUploadsComplete && errorCount === activeTaskList.length;
 
   let statsText: string;
-  if (allUploadsComplete) {
+  if (!isOnline && !hasActiveTasks) {
+    statsText = '当前无网络连接，请连接网络后上传';
+  } else if (allUploadsComplete) {
     statsText = `${completedCount} 个文件上传完成`;
   } else if (allFailed) {
     statsText = `${errorCount} 个文件上传失败`;
@@ -51,7 +55,7 @@ function UploadActionBar() {
     clearCompletedTasks();
   };
 
-  const isStartDisabled = isStarting || !hasPendingFiles || isUploading;
+  const isStartDisabled = isStarting || !hasPendingFiles || isUploading || !isOnline;
   const showClearButton = allUploadsComplete || allFailed;
 
   return (

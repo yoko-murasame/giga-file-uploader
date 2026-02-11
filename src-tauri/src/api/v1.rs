@@ -116,6 +116,23 @@ impl GigafileApi for GigafileApiV1 {
     }
 }
 
+/// Lightweight connectivity check to gigafile.nu.
+///
+/// Sends an HTTP HEAD request with a 5-second timeout. Returns `true` if the
+/// server responds (any HTTP status), `false` if the request fails (network error,
+/// timeout, DNS failure). This is NOT an error condition — offline is a normal
+/// application state.
+pub async fn check_connectivity() -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    client.head(GIGAFILE_HOME_URL).send().await.is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -257,5 +274,12 @@ mod tests {
         let body: serde_json::Value = serde_json::from_str(r#"{"status": 1}"#).unwrap();
         let status = body["status"].as_i64().unwrap_or(-1) as i32;
         assert_ne!(status, 0);
+    }
+
+    #[tokio::test]
+    async fn test_check_connectivity_compiles_and_returns_bool() {
+        // Compilation verification: check_connectivity exists and returns bool.
+        // We do NOT assert the result because CI network state is unpredictable.
+        let _result: bool = check_connectivity().await;
     }
 }

@@ -4,17 +4,20 @@ import userEvent from '@testing-library/user-event';
 
 import UploadActionBar from '@/components/upload/UploadActionBar';
 import { useUploadStore } from '@/stores/uploadStore';
+import { useAppStore } from '@/stores/appStore';
 
 vi.mock('@/lib/tauri', () => ({
   startUpload: vi.fn(),
   getSettings: vi.fn(),
   saveSettings: vi.fn(),
+  checkNetwork: vi.fn(),
   invoke: vi.fn(),
   listen: vi.fn(),
 }));
 
 describe('UploadActionBar', () => {
   beforeEach(() => {
+    useAppStore.setState({ isOnline: true });
     useUploadStore.setState({
       pendingFiles: [],
       activeTasks: {},
@@ -270,5 +273,44 @@ describe('UploadActionBar', () => {
 
     const statsText = screen.getByText(/个文件/);
     expect(statsText).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('should disable start button when offline', () => {
+    useAppStore.setState({ isOnline: false });
+    useUploadStore.setState({
+      pendingFiles: [
+        {
+          id: '1',
+          fileName: 'a.txt',
+          filePath: '/a.txt',
+          fileSize: 100,
+          status: 'pending' as const,
+        },
+      ],
+    });
+
+    render(<UploadActionBar />);
+
+    const startButton = screen.getByRole('button', { name: '开始上传' });
+    expect(startButton).toBeDisabled();
+  });
+
+  it('should show offline message when offline and no active tasks', () => {
+    useAppStore.setState({ isOnline: false });
+    useUploadStore.setState({
+      pendingFiles: [
+        {
+          id: '1',
+          fileName: 'a.txt',
+          filePath: '/a.txt',
+          fileSize: 100,
+          status: 'pending' as const,
+        },
+      ],
+    });
+
+    render(<UploadActionBar />);
+
+    expect(screen.getByText('当前无网络连接，请连接网络后上传')).toBeInTheDocument();
   });
 });
