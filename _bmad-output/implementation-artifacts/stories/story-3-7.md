@@ -553,3 +553,37 @@ Story 5.1 将在 UploadActionBar 中添加保留期 DropdownMenu（Radix UI）�
 - [ ] 前端测试：[清空列表] 点击调用 clearCompletedTasks
 - [ ] `pnpm test` 前端测试通过
 - [ ] `pnpm lint` ESLint 无错误
+
+---
+
+## Review History
+
+### Review Round 1 — 2026-02-11
+
+**Reviewer:** Story Reviewer (C3) | **Session:** sprint-2026-02-11-002
+
+**Verdict: PASSED**
+
+| # | Checklist Item | Result | Feedback |
+|---|----------------|--------|----------|
+| RC-1 | AC clarity | PASS | 9 条 AC 全部 Given/When/Then 格式，具体可测。Epic 6 条 AC 完整覆盖并合理细化 |
+| RC-2 | Task sequence | PASS | 5 个 Task 线性依赖，无循环，执行顺序正确 |
+| RC-3 | Technical feasibility | PASS | 所有引用的 store 字段、action、类型、工具函数、Tailwind token 均在代码库中验证存在且签名一致 |
+| RC-4 | Requirement consistency | PASS | 无矛盾或歧义。按钮禁用机制、清空状态链、组件渲染条件逻辑自洽 |
+| RC-5 | Scope sizing | PASS | 纯前端：1 store action + 1 新组件 + 1 集成修改 + 测试，单周期可完成 |
+| RC-6 | Dependency documentation | PASS | Story 3-5/3-6 (已完成) 和 Story 5.1 (未来) 依赖关系已标注 |
+| RC-7 | File scope declaration | PASS | 新增/修改文件路径全部验证存在，禁止修改列表完整 |
+| RC-8 | API/method existence | PASS | useUploadStore, formatFileSize, PendingFile.fileSize, UploadTaskProgress.status, Tailwind tokens 全部代码库直接验证通过 |
+
+**API Verifications:**
+
+| Reference | Source | Result |
+|-----------|--------|--------|
+| `uploadStore.pendingFiles` | `src/stores/uploadStore.ts:8` | confirmed |
+| `uploadStore.activeTasks` | `src/stores/uploadStore.ts:9` | confirmed |
+| `uploadStore.allUploadsComplete` | `src/stores/uploadStore.ts:10` | confirmed |
+| `uploadStore.startUpload(lifetime)` | `src/stores/uploadStore.ts:14` | confirmed |
+| `formatFileSize(bytes)` | `src/lib/format.ts:1` | confirmed |
+| `PendingFile.fileSize` | `src/types/upload.ts:5` | confirmed |
+| `UploadTaskProgress.status` | `src/types/upload.ts:34` | confirmed |
+| `--color-brand, --color-border, --color-surface, --color-bg` | `src/App.css:4-9` | confirmed |
