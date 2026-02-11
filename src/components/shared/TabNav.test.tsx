@@ -3,10 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach } from 'vitest';
 import TabNav from '@/components/shared/TabNav';
 import { useAppStore } from '@/stores/appStore';
+import { useHistoryStore } from '@/stores/historyStore';
 
 describe('TabNav', () => {
   beforeEach(() => {
     useAppStore.setState({ currentTab: 'upload' });
+    useHistoryStore.setState({ records: [], loadHistory: async () => {} });
   });
 
   it('renders two tabs with correct labels', () => {
@@ -35,7 +37,7 @@ describe('TabNav', () => {
 
     expect(useAppStore.getState().currentTab).toBe('history');
     expect(historyTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('历史记录页面 - 待实现')).toBeInTheDocument();
+    expect(screen.getByText('还没有上传记录')).toBeInTheDocument();
   });
 
   it('switches back to upload tab on click', async () => {

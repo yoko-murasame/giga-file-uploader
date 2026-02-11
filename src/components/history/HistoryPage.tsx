@@ -1,7 +1,18 @@
+import { useEffect } from 'react';
+
+import HistoryList from '@/components/history/HistoryList';
+import { useHistoryStore } from '@/stores/historyStore';
+
 function HistoryPage() {
+  const loadHistory = useHistoryStore((s) => s.loadHistory);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
   return (
-    <div className="flex h-full items-center justify-center">
-      <p className="text-text-secondary">历史记录页面 - 待实现</p>
+    <div className="flex h-full flex-col overflow-y-auto px-4 py-4">
+      <HistoryList />
     </div>
   );
 }
