@@ -22,6 +22,8 @@ pub fn run() {
             commands::files::resolve_dropped_paths,
             commands::upload::start_upload,
             commands::upload::cancel_upload,
+            commands::history::get_history,
+            commands::history::delete_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

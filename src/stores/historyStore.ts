@@ -1,11 +1,33 @@
 import { create } from 'zustand';
 
-// TODO: Story 4.x 实现完整 history state
+import { deleteHistory, getHistory } from '@/lib/tauri';
+
+import type { HistoryRecord } from '@/types/history';
+
 interface HistoryState {
-  // TODO: Story 4.x 添加历史记录列表、过滤/排序状态
-  _placeholder?: undefined;
+  records: HistoryRecord[];
+  loadHistory: () => Promise<void>;
+  deleteRecord: (id: string) => Promise<void>;
 }
 
-export const useHistoryStore = create<HistoryState>(() => ({
-  // TODO: Story 4.x 实现完整 history state
+export const useHistoryStore = create<HistoryState>((set, get) => ({
+  records: [],
+
+  loadHistory: async () => {
+    try {
+      const records = await getHistory();
+      set({ records });
+    } catch (error) {
+      console.error('Failed to load history:', error);
+    }
+  },
+
+  deleteRecord: async (id) => {
+    try {
+      await deleteHistory(id);
+      set({ records: get().records.filter((r) => r.id !== id) });
+    } catch (error) {
+      console.error('Failed to delete history record:', error);
+    }
+  },
 }));

@@ -13,6 +13,7 @@ export { invoke } from '@tauri-apps/api/core';
 export { listen } from '@tauri-apps/api/event';
 
 import type { FileEntry } from '@/types/upload';
+import type { HistoryRecord } from '@/types/history';
 
 /** Resolve dropped file/directory paths into a flat list of file entries. */
 export async function resolveDroppedPaths(paths: string[]): Promise<FileEntry[]> {
@@ -37,6 +38,16 @@ export async function startUpload(
 /** Cancel an active upload task. */
 export async function cancelUpload(taskId: string): Promise<void> {
   return invoke<void>('cancel_upload', { taskId });
+}
+
+/** Get all upload history records. */
+export async function getHistory(): Promise<HistoryRecord[]> {
+  return invoke<HistoryRecord[]>('get_history');
+}
+
+/** Delete a history record by ID. */
+export async function deleteHistory(id: string): Promise<void> {
+  return invoke<void>('delete_history', { id });
 }
 
 /** Copy text to system clipboard. */

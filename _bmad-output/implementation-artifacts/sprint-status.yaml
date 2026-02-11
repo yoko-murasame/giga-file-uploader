@@ -65,7 +65,7 @@ development_status:
 
   # Epic 4: 历史记录与链接管理
   epic-4: in-progress
-  4-1-upload-history-persistent-storage: ready-for-dev
+  4-1-upload-history-persistent-storage: review
   4-2-history-list-display-and-link-management: backlog
   epic-4-retrospective: optional
 

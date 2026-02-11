@@ -7,7 +7,7 @@
 pub mod files;
 
 pub mod upload;
-// TODO: Story 4.1 - pub mod history; (get_history, delete_history)
+pub mod history;
 // TODO: Story 5.1 - pub mod settings; (get_settings, save_settings)
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 //! via a JSON key-value store. Data is written to disk immediately to ensure crash
 //! safety (NFR11).
 
-// TODO: Story 4.1 - pub mod history; (add_record, get_all, delete_record)
+pub mod history;
 // TODO: Story 5.1 - pub mod settings; (get/save settings)
 
 #[cfg(test)]

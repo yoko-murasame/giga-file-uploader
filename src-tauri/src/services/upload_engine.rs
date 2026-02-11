@@ -203,8 +203,24 @@ async fn upload_file(
     }
     task.status = UploadStatus::Completed;
 
-    // Emit upload:file-complete event with download URL (first shard URL as representative)
+    // Extract download URL (first shard URL as representative)
     let download_url = task.shards[0].download_url.clone().unwrap_or_default();
+
+    // Save history record BEFORE emit (NFR11 crash-safe, RC-3 ownership-safe)
+    let now = chrono::Utc::now();
+    let history_record = crate::models::history::HistoryRecord {
+        id: uuid::Uuid::new_v4().simple().to_string(),
+        file_name: task.file_name.clone(),
+        download_url: download_url.clone(), // clone before download_url moves into emit
+        file_size: task.file_size,
+        uploaded_at: now.to_rfc3339(),
+        expires_at: (now + chrono::TimeDelta::days(config.lifetime as i64)).to_rfc3339(),
+    };
+    if let Err(e) = crate::storage::history::add_record(&app, history_record) {
+        log::error!("Failed to save history record for '{}': {}", task.file_name, e);
+    }
+
+    // Emit upload:file-complete event (download_url moves here)
     let _ = app.emit(
         "upload:file-complete",
         FileCompletePayload {

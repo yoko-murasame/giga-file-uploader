@@ -6,7 +6,7 @@
 pub mod file;
 
 pub mod upload;
-// TODO: Story 4.1 - pub mod history; (HistoryRecord)
+pub mod history;
 
 #[cfg(test)]
 mod tests {
