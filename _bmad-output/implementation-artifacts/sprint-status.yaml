@@ -60,7 +60,7 @@ development_status:
   3-4-retry-engine-and-error-handling: done
   3-5-upload-progress-aggregation-and-realtime-display: done
   3-6-upload-complete-link-output-and-copy: done
-  3-7-upload-action-bar-and-trigger-button: story-doc-review
+  3-7-upload-action-bar-and-trigger-button: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: 历史记录与链接管理
