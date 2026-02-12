@@ -120,10 +120,12 @@ So that 我可以根据使用场景选择合适的版本。
 - name: Upload portable exe to Release (Windows)
   if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
   run: |
-    gh release upload ${{ github.ref_name }} "src-tauri/target/release/Giga File Uploader.exe#Giga File Uploader Portable.exe" --clobber
+    gh release upload ${{ github.ref_name }} "src-tauri/target/release/giga-file-uploader.exe#Giga File Uploader Portable.exe" --clobber
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+**注意：** Portable exe 文件名是 `giga-file-uploader.exe`（小写连字符，与 Cargo.toml 中的 package name 一致），上传时通过 `#` 重命名为 `Giga File Uploader Portable.exe`。
 
 ### 设计决策
 
@@ -141,12 +143,12 @@ So that 我可以根据使用场景选择合适的版本。
 
 ```
 src-tauri/target/release/
-├── Giga File Uploader.exe          <-- Portable 版本（直接运行）
+├── giga-file-uploader.exe          <-- Portable 版本（Cargo 使用小写 package name）
 └── bundle/
     ├── nsis/
     │   └── Giga File Uploader_0.1.0_x64-setup.exe   <-- NSIS 安装包
     └── msi/
-        └── Giga File Uploader_0.1.0_x64_en-US.msi   <-- MSI（额外产出，可忽略）
+        └── Giga File Uploader_0.1.0_x64_en-US.msi   <-- MSI（额外产出）
 ```
 
 ### WebView2 运行时覆盖策略
@@ -194,10 +196,12 @@ src-tauri/target/release/
 - name: Upload portable exe to Release (Windows)
   if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
   run: |
-    gh release upload ${{ github.ref_name }} "src-tauri/target/release/Giga File Uploader.exe#Giga File Uploader Portable.exe" --clobber
+    gh release upload ${{ github.ref_name }} "src-tauri/target/release/giga-file-uploader.exe#Giga File Uploader Portable.exe" --clobber
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+**注意：** Portable exe 文件名是 `giga-file-uploader.exe`（小写连字符，与 Cargo.toml 中的 package name 一致），上传时通过 `#` 重命名为 `Giga File Uploader Portable.exe`。
 2.2. 确保 `permissions: contents: write` 已配置
 
 ### Task 3: macOS 本地构建验证
