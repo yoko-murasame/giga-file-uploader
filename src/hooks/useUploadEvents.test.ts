@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
 
 import { useUploadEvents } from '@/hooks/useUploadEvents';
@@ -14,7 +14,7 @@ import type {
 type EventCallback<T> = (event: { payload: T }) => void;
 
 const mockListeners: Map<string, EventCallback<unknown>> = new Map();
-const mockUnlisteners: Array<vi.Mock> = [];
+const mockUnlisteners: Array<Mock> = [];
 
 vi.mock('@/lib/tauri', () => ({
   startUpload: vi.fn(),
@@ -86,6 +86,7 @@ describe('useUploadEvents', () => {
         taskId: 'task-1',
         fileProgress: 50,
         shards: [{ shardIndex: 0, progress: 50, status: 'uploading' }],
+        speed: 1024,
       },
     });
 

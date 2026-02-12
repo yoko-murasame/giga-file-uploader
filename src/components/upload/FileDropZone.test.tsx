@@ -69,8 +69,8 @@ describe('FileDropZone', () => {
     it('should call resolveDroppedPaths and addFiles when files are selected', async () => {
       const user = userEvent.setup();
       const mockEntries: FileEntry[] = [
-        { id: '1', name: 'test.txt', path: '/tmp/test.txt', size: 100 },
-        { id: '2', name: 'image.png', path: '/tmp/image.png', size: 200 },
+        { fileName: 'test.txt', filePath: '/tmp/test.txt', fileSize: 100 },
+        { fileName: 'image.png', filePath: '/tmp/image.png', fileSize: 200 },
       ];
       mockOpenFilePicker.mockResolvedValue(['/tmp/test.txt', '/tmp/image.png']);
       mockResolveDroppedPaths.mockResolvedValue(mockEntries);
@@ -233,7 +233,7 @@ describe('FileDropZone', () => {
     it('should call resolveDroppedPaths and addFiles in collapsed mode', async () => {
       const user = userEvent.setup();
       const mockEntries: FileEntry[] = [
-        { id: '3', name: 'doc.pdf', path: '/tmp/doc.pdf', size: 500 },
+        { fileName: 'doc.pdf', filePath: '/tmp/doc.pdf', fileSize: 500 },
       ];
       mockOpenFilePicker.mockResolvedValue(['/tmp/doc.pdf']);
       mockResolveDroppedPaths.mockResolvedValue(mockEntries);

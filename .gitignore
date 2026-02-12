@@ -31,3 +31,4 @@ src-tauri/gen/schemas/macOS-schema.json
 tsconfig.tsbuildinfo
 src-tauri/Cargo.lock
 .sprint-session/.startup-timestamp
+/.sprint-running

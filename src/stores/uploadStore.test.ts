@@ -138,6 +138,7 @@ describe('uploadStore', () => {
         taskId: 'task-1',
         fileProgress: 50.5,
         shards: [{ shardIndex: 0, progress: 50.5, status: 'uploading' }],
+        speed: 1024,
       };
 
       useUploadStore.getState().updateProgress(payload);
@@ -155,6 +156,7 @@ describe('uploadStore', () => {
         taskId: 'non-existent',
         fileProgress: 50,
         shards: [],
+        speed: 0,
       };
 
       useUploadStore.getState().updateProgress(payload);
@@ -188,6 +190,7 @@ describe('uploadStore', () => {
         taskId: 'task-1',
         fileProgress: 75,
         shards: [],
+        speed: 2048,
       };
 
       useUploadStore.getState().updateProgress(payload);
