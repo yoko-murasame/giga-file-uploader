@@ -5,15 +5,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: 'Create a GitHub release'
-        required: false
-        default: 'false'
-        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
 
 jobs:
   build:
