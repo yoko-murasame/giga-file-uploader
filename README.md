@@ -25,7 +25,9 @@ Download the `.dmg` file from [Releases](../../releases), or use the portable `.
 
 Two options available:
 - **NSIS Installer** (`*-setup.exe`) - Recommended, auto-installs WebView2 if missing
-- **Portable** (`Giga File Uploader.exe`) - No installation required, requires WebView2 runtime
+- **Portable** (`Giga File Uploader.exe`) - No installation required, requires WebView2 runtime (Win10 1803+ / Win11 pre-installed)
+
+> **Note:** Portable exe is available in the release assets. It's the raw executable that can run directly without installation.
 
 ## Development
 

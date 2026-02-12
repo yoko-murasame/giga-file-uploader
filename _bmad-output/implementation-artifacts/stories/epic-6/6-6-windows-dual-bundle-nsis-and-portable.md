@@ -80,12 +80,13 @@ So that 我可以根据使用场景选择合适的版本。
 ```
 
 - `"targets": "all"` 已经会在 Windows 上产出 NSIS 安装包和 MSI 安装包
-- Portable exe 是 Tauri 构建过程的中间产物，始终存在于 `target/release/` 目录
-- **缺失项：** 没有显式配置 NSIS 的 WebView2 安装行为（当前依赖 Tauri 默认值）
+- **重要：Portable exe 不是独立的 bundle target**，Tauri 2 支持的 targets 只有 `["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"]`。Portable exe 是构建过程的**中间产物**，存在于 `target/release/` 目录
+- **缺失项：** 没有显式配置 WebView2 安装行为（当前依赖 Tauri 默认值）
+- **CI 注意：** `tauri-apps/tauri-action` 创建 Release 时只自动上传 bundle 目录下的文件，**不会自动上传 raw exe**，需要额外处理
 
 ### 目标配置
 
-在 `bundle` 节点下新增 `windows` 配置块，显式声明 NSIS 安装包的 WebView2 处理策略：
+在 `bundle` 节点下新增 `windows` 配置块，显式声明 WebView2 处理策略：
 
 ```json
 {
@@ -101,22 +102,40 @@ So that 我可以根据使用场景选择合适的版本。
     ],
     "windows": {
       "nsis": {
-        "installMode": "downloadBootstrapper"
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
       }
     }
   }
 }
 ```
 
+### CI 配置
+
+为了在 GitHub Release 中包含 Portable exe，需要在 `.github/workflows/build.yml` 中添加额外步骤：
+
+```yaml
+- name: Upload portable exe to Release (Windows)
+  if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+  run: |
+    gh release upload ${{ github.ref_name }} "src-tauri/target/release/Giga File Uploader.exe#Giga File Uploader Portable.exe" --clobber
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ### 设计决策
 
 1. **保留 `"targets": "all"` 而非改为 `["nsis"]`：** `"all"` 是跨平台安全的设置。在 macOS 上产出 dmg/app，在 Windows 上产出 nsis/msi。改为特定 target 会破坏其他平台的构建。MSI 是额外产出，不影响 NSIS 和 Portable。
 
-2. **选择 `downloadBootstrapper` 而非 `embedBootstrapper`：** `downloadBootstrapper` 在安装时按需下载 WebView2（安装包体积小，约几 MB bootstrapper），适合大部分场景。`embedBootstrapper` 会增大安装包约 ~150MB。考虑到 Win10 1803+ 和 Win11 已预装 WebView2，绝大多数用户不会触发下载，因此优先选择小体积方案。
+2. **WebView2 配置使用 `webviewInstallMode` 而非 `nsis.installMode`：** `webviewInstallMode` 是 Windows 级别的配置，控制 WebView2 安装策略。`nsis.installMode` 只控制安装范围（currentUser/perMachine）。两者是不同的配置项。
 
-3. **Portable 版本无需额外配置：** Tauri 构建流程天然产出 raw exe（`target/release/Giga File Uploader.exe`），此文件即可作为 Portable 版本直接分发。它不包含 WebView2，依赖系统已安装的版本。
+3. **选择 `downloadBootstrapper` 而非 `embedBootstrapper`：** `downloadBootstrapper` 在安装时按需下载 WebView2（安装包体积小），适合大部分场景。考虑到 Win10 1803+ 和 Win11 已预装 WebView2，绝大多数用户不会触发下载。
 
-4. **不配置 NSIS 多语言：** 当前应用面向日文/中文用户群，NSIS 默认语言检测足够使用，无需额外配置 `displayLanguageSelector` 或 `languages`。
+4. **Portable 版本需要 CI 额外处理：** Tauri 构建流程天然产出 raw exe（`target/release/Giga File Uploader.exe`），但这个文件**不会自动包含在 Release 中**。需要在 CI workflow 中使用 `gh release upload` 命令手动上传。
+
+5. **不配置 NSIS 多语言：** 当前应用面向日文/中文用户群，NSIS 默认语言检测足够使用。
 
 ### 构建产出物分布（Windows）
 
@@ -143,71 +162,87 @@ src-tauri/target/release/
 
 ## Tasks
 
-### Task 1: 在 tauri.conf.json 中添加 Windows NSIS 配置
+### Task 1: 在 tauri.conf.json 中添加 Windows 配置
 
 **依赖:** 无
 
 **Subtasks:**
 
 1.1. 打开 `src-tauri/tauri.conf.json`
-1.2. 在 `bundle` 对象中，`icon` 数组之后，新增 `"windows"` 配置块：
+1.2. 在 `bundle` 对象中新增 `"windows"` 配置块：
 ```json
 "windows": {
   "nsis": {
-    "installMode": "downloadBootstrapper"
+    "installMode": "currentUser"
+  },
+  "webviewInstallMode": {
+    "type": "downloadBootstrapper"
   }
 }
 ```
 1.3. 确保 JSON 格式正确，无语法错误
 1.4. 保留 `"targets": "all"` 不变
 
-### Task 2: macOS 本地构建验证
+### Task 2: 配置 CI 上传 Portable exe
+
+**依赖:** 无（可与 Task 1 并行）
+
+**Subtasks:**
+
+2.1. 在 `.github/workflows/build.yml` 的 Windows 构建步骤后添加：
+```yaml
+- name: Upload portable exe to Release (Windows)
+  if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
+  run: |
+    gh release upload ${{ github.ref_name }} "src-tauri/target/release/Giga File Uploader.exe#Giga File Uploader Portable.exe" --clobber
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+2.2. 确保 `permissions: contents: write` 已配置
+
+### Task 3: macOS 本地构建验证
 
 **依赖:** Task 1
 
 **Subtasks:**
 
-2.1. 执行 `pnpm tauri build` 确认 macOS 构建不受新配置影响
-2.2. 验证构建成功完成，无错误或警告（与 Windows 配置相关的警告可忽略）
-2.3. 确认 `src-tauri/target/release/bundle/` 下产出 `.dmg` 和 `.app`
+3.1. 执行 `pnpm tauri build` 确认 macOS 构建不受新配置影响
+3.2. 验证构建成功完成，无错误或警告
+3.3. 确认 `src-tauri/target/release/bundle/` 下产出 `.dmg` 和 `.app`
 
-### Task 3: Windows 构建验证（手动 / CI）
+### Task 4: Windows 构建验证（CI）
 
-**依赖:** Task 1
+**依赖:** Task 1, Task 2
 
 **Subtasks:**
 
-3.1. 在 Windows 环境执行 `pnpm tauri build`
-3.2. 确认 `src-tauri/target/release/Giga File Uploader.exe` 存在（Portable 版本）
-3.3. 确认 `src-tauri/target/release/bundle/nsis/` 下存在 `*-setup.exe`（NSIS 安装包）
-3.4. 双击 Portable exe 验证应用正常启动（需系统已有 WebView2）
-3.5. 运行 NSIS 安装包验证安装流程正常
+4.1. 推送 tag 触发 CI 构建
+4.2. 确认 Release 中包含三个文件：`*-setup.exe`、`*.msi`、`Giga File Uploader Portable.exe`
+4.3. 下载 NSIS 安装包验证安装流程正常
+4.4. 下载 Portable exe 验证可直接运行（需系统已有 WebView2）
 
 ---
 
 ## Task 依赖顺序
 
 ```
-Task 1 (tauri.conf.json 配置变更)
-       |
-       ├──> Task 2 (macOS 构建验证)
-       |
-       └──> Task 3 (Windows 构建验证 -- 手动/CI)
+Task 1 (tauri.conf.json)  ─┬─> Task 3 (macOS 验证)
+                           │
+Task 2 (CI workflow)  ─────┴─> Task 4 (Windows CI 验证)
 ```
 
-Task 2 和 Task 3 可并行执行，均仅依赖 Task 1。
+Task 1 和 Task 2 可并行执行。Task 3 和 Task 4 分别验证各平台构建。
 
 ---
 
 ## File Scope
 
-Dev Runner 被允许修改的文件列表：
-
 ### 修改文件
 
 | 文件 | 修改内容 |
 |------|----------|
-| `src-tauri/tauri.conf.json` | 在 `bundle` 中添加 `windows.nsis` 配置块 |
+| `src-tauri/tauri.conf.json` | 添加 `bundle.windows` 配置块 |
+| `.github/workflows/build.yml` | 添加 Portable exe 上传步骤 |
 
 ### 禁止修改
 
@@ -216,7 +251,6 @@ Dev Runner 被允许修改的文件列表：
 - `src-tauri/Cargo.toml` -- 不涉及依赖变更
 - `package.json` -- 不涉及依赖变更
 - `src-tauri/icons/` -- 图标文件不变
-- `src-tauri/tauri.conf.json` 中除 `bundle.windows` 以外的配置项 -- 不应改动
 
 ---
 
@@ -224,32 +258,48 @@ Dev Runner 被允许修改的文件列表：
 
 ### Tauri 2 Windows Bundle Targets
 
-Tauri 2 在 Windows 上使用 `"targets": "all"` 时产出：
-- **NSIS 安装包**：完整安装流程，支持自定义安装路径、开始菜单快捷方式、WebView2 自动安装
-- **MSI 安装包**：Windows Installer 格式，企业部署场景适用
-- **Portable exe**：`target/release/` 下的原始二进制文件，无需安装直接运行
+Tauri 2 支持的 bundle targets：`["deb", "rpm", "appimage", "nsis", "msi", "app", "dmg"]`
 
-### WebView2 installMode 选项
+**重要：没有 "portable" target！**
+
+使用 `"targets": "all"` 时 Windows 产出：
+- **NSIS 安装包**：`bundle/nsis/*-setup.exe`，完整安装流程，支持 WebView2 自动安装
+- **MSI 安装包**：`bundle/msi/*.msi`，Windows Installer 格式，企业部署适用
+- **Raw exe**：`target/release/Giga File Uploader.exe`，**中间产物**，可作为 Portable 版本分发
+
+### WebView2 webviewInstallMode 选项
 
 | 模式 | 说明 | 安装包增量 |
 |------|------|------------|
 | `downloadBootstrapper` | 安装时按需下载 WebView2 bootstrapper（推荐） | ~2MB |
 | `embedBootstrapper` | 将 bootstrapper 嵌入安装包 | ~2MB |
 | `offlineInstaller` | 嵌入完整离线安装包 | ~150MB |
-| `skip` | 跳过 WebView2 安装（不推荐） | 0 |
+| `skip` | 跳过 WebView2 安装（不推荐，Portable 版本隐式使用此模式） | 0 |
+
+### CI Release 上传说明
+
+| 产物 | 位置 | 自动上传到 Release |
+|------|------|-------------------|
+| NSIS 安装包 | `bundle/nsis/*-setup.exe` | ✅ 是（tauri-action 自动处理） |
+| MSI 安装包 | `bundle/msi/*.msi` | ✅ 是（tauri-action 自动处理） |
+| Portable exe | `target/release/*.exe` | ❌ 否，需手动 `gh release upload` |
 
 ### 变更量评估
 
-本 Story 仅修改 `src-tauri/tauri.conf.json` 一个文件，新增约 5 行 JSON 配置。属于纯配置变更，无逻辑代码改动。
+本 Story 修改：
+1. `src-tauri/tauri.conf.json` - 新增 `windows.webviewInstallMode` 配置
+2. `.github/workflows/build.yml` - 新增 Portable exe 上传步骤
 
 ---
 
 ## Definition of Done
 
-- [ ] `src-tauri/tauri.conf.json` 中 `bundle.windows.nsis.installMode` 设置为 `"downloadBootstrapper"`
+- [ ] `src-tauri/tauri.conf.json` 中 `bundle.windows.webviewInstallMode.type` 设置为 `"downloadBootstrapper"`
+- [ ] `.github/workflows/build.yml` 中包含 Portable exe 上传步骤
+- [ ] `permissions: contents: write` 已配置
 - [ ] macOS 上 `pnpm tauri build` 正常完成（Windows 配置不影响 macOS 构建）
-- [ ] Windows 上 `pnpm tauri build` 产出 NSIS 安装包（`*-setup.exe`）
-- [ ] Windows 上构建同时产出 Portable exe（`target/release/Giga File Uploader.exe`）
-- [ ] Portable 版本在 Win10 1803+ / Win11 上可正常运行
+- [ ] Windows CI 构建产出 NSIS 安装包（`*-setup.exe`）
+- [ ] Windows CI 构建产出 MSI 安装包（`*.msi`）
+- [ ] Windows CI 构建产出 Portable exe 并上传到 Release
 - [ ] NSIS 安装包在缺少 WebView2 的机器上自动下载安装 WebView2
-- [ ] JSON 配置格式正确，无语法错误
+- [ ] Portable 版本在 Win10 1803+ / Win11 上可正常运行（依赖系统 WebView2）
