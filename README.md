@@ -24,6 +24,7 @@ Download the `.dmg` file from [Releases](../../releases), or use the portable `.
 ### Windows
 
 Two options available:
+
 - **NSIS Installer** (`*-setup.exe`) - Recommended, auto-installs WebView2 if missing
 - **Portable** (`Giga File Uploader.exe`) - No installation required, requires WebView2 runtime (Win10 1803+ / Win11 pre-installed)
 
@@ -97,3 +98,14 @@ The project relies on reverse-engineered APIs and may break if gigafile.nu chang
 **Shaoyoko**
 
 - GitHub: [@yoko-murasame](https://github.com/yoko-murasame)
+
+## Optimization Notes (2026-03-01)
+
+This round focuses on upload reliability first, while preserving useful progress visibility.
+
+- **Single upload session for large files**: Reworked chunk planning to use one upload session with 100 MiB chunks, avoiding multi-session split behavior that could return incomplete links for files larger than 1 GiB.
+- **Stability-first transfer mode**: Switched remaining chunk uploads to sequential mode (after first-chunk session establishment) to avoid gigafile order-related truncation seen under parallel mode.
+- **Stronger completion/error flow**: Unified `upload:error` emission across upload and post-upload phases so the UI no longer hangs at 100% without feedback.
+- **Best-effort post-upload verification**: Added remote size verification with retries; verification failures now produce warnings and diagnostics without blocking link return in stability mode.
+- **Clearer frontend failure feedback**: Extended task state to carry `errorMessage` and display it directly in upload items instead of a generic error-only state.
+- **Virtual shard visualization restored**: Added UI-only visual shards (1 GiB segments) for large files so users still get shard-style progress detail even though backend now uploads in a single session.
