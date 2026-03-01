@@ -26,7 +26,7 @@ export function useUploadEvents() {
       cleanups.push(unlisten1);
 
       const unlisten2 = await listen<UploadErrorPayload>('upload:error', (event) => {
-        useUploadStore.getState().setTaskError(event.payload.taskId);
+        useUploadStore.getState().setTaskError(event.payload.taskId, event.payload.errorMessage);
       });
       if (cancelled) {
         unlisten2();
@@ -34,27 +34,20 @@ export function useUploadEvents() {
       }
       cleanups.push(unlisten2);
 
-      const unlisten3 = await listen<FileCompletePayload>(
-        'upload:file-complete',
-        (event) => {
-          useUploadStore.getState().setTaskFileComplete(
-            event.payload.taskId,
-            event.payload.downloadUrl,
-          );
-        },
-      );
+      const unlisten3 = await listen<FileCompletePayload>('upload:file-complete', (event) => {
+        useUploadStore
+          .getState()
+          .setTaskFileComplete(event.payload.taskId, event.payload.downloadUrl);
+      });
       if (cancelled) {
         unlisten3();
         return;
       }
       cleanups.push(unlisten3);
 
-      const unlisten4 = await listen<AllCompletePayload>(
-        'upload:all-complete',
-        () => {
-          useUploadStore.getState().setAllComplete();
-        },
-      );
+      const unlisten4 = await listen<AllCompletePayload>('upload:all-complete', () => {
+        useUploadStore.getState().setAllComplete();
+      });
       if (cancelled) {
         unlisten4();
         return;
@@ -66,7 +59,9 @@ export function useUploadEvents() {
 
     return () => {
       cancelled = true;
-      cleanups.forEach((fn) => fn());
+      cleanups.forEach((fn) => {
+        fn();
+      });
     };
   }, []);
 }

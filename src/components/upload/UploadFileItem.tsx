@@ -66,6 +66,7 @@ function UploadFileItemInner({
 
   const isUploading = !!taskProgress;
   const isCompleted = taskProgress?.status === 'completed';
+  const isError = taskProgress?.status === 'error';
   const fileName = taskProgress?.fileName ?? fileNameProp ?? '';
   const fileSize = taskProgress?.fileSize ?? fileSizeProp ?? 0;
   const hasMultipleShards = taskProgress && taskProgress.shards.length > 1;
@@ -104,8 +105,8 @@ function UploadFileItemInner({
           </div>
         </div>
 
-        {isUploading && (
-          isCompleted ? (
+        {isUploading &&
+          (isCompleted ? (
             <CheckCircle2 size={18} className="shrink-0 text-success" />
           ) : (
             <div className="flex shrink-0 items-center gap-2">
@@ -116,8 +117,7 @@ function UploadFileItemInner({
                 {Math.round(taskProgress.fileProgress)}%
               </span>
             </div>
-          )
-        )}
+          ))}
 
         {!isUploading && (
           <button
@@ -167,6 +167,12 @@ function UploadFileItemInner({
                 </Tooltip.Portal>
               </Tooltip.Root>
               <CopyButton text={taskProgress.downloadUrl} />
+            </div>
+          )}
+
+          {isError && taskProgress.errorMessage && (
+            <div className="mt-1.5 truncate text-xs text-error" title={taskProgress.errorMessage}>
+              {taskProgress.errorMessage}
             </div>
           )}
 

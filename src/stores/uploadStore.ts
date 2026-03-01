@@ -2,7 +2,45 @@ import { create } from 'zustand';
 
 import { startUpload as startUploadIpc, getSettings, saveSettings } from '@/lib/tauri';
 
-import type { FileEntry, PendingFile, ProgressPayload, UploadTaskProgress } from '@/types/upload';
+import type {
+  FileEntry,
+  PendingFile,
+  ProgressPayload,
+  ShardProgress,
+  UploadTaskProgress,
+} from '@/types/upload';
+
+const VISUAL_SHARD_SIZE_BYTES = 1_073_741_824;
+
+function buildVisualShards(fileSize: number, fileProgress: number): ShardProgress[] {
+  const shardCount = Math.ceil(fileSize / VISUAL_SHARD_SIZE_BYTES);
+  if (shardCount <= 1) {
+    return [];
+  }
+
+  const uploadedBytes = Math.min(fileSize, Math.max(0, (fileSize * fileProgress) / 100));
+
+  return Array.from({ length: shardCount }, (_, shardIndex) => {
+    const shardStart = shardIndex * VISUAL_SHARD_SIZE_BYTES;
+    const shardEnd = Math.min(fileSize, shardStart + VISUAL_SHARD_SIZE_BYTES);
+    const shardSize = shardEnd - shardStart;
+    const uploadedInShard = Math.min(shardSize, Math.max(0, uploadedBytes - shardStart));
+    const progress = shardSize > 0 ? (uploadedInShard / shardSize) * 100 : 0;
+
+    let status: ShardProgress['status'] = 'pending';
+    if (progress >= 100) {
+      status = 'completed';
+    } else if (progress > 0) {
+      status = 'uploading';
+    }
+
+    return {
+      shardIndex,
+      progress,
+      status,
+    };
+  });
+}
 
 interface UploadState {
   pendingFiles: PendingFile[];
@@ -14,7 +52,7 @@ interface UploadState {
   clearFiles: () => void;
   startUpload: (lifetime: number) => Promise<void>;
   updateProgress: (payload: ProgressPayload) => void;
-  setTaskError: (taskId: string) => void;
+  setTaskError: (taskId: string, errorMessage?: string) => void;
   setTaskCompleted: (taskId: string) => void;
   setTaskFileComplete: (taskId: string, downloadUrl: string) => void;
   setAllComplete: () => void;
@@ -94,27 +132,34 @@ export const useUploadStore = create<UploadState>((set, get) => ({
     set((state) => {
       const existing = state.activeTasks[payload.taskId];
       if (!existing) return state;
+
+      const shouldUseVisualShards =
+        existing.fileSize > VISUAL_SHARD_SIZE_BYTES && payload.shards.length <= 1;
+      const shards = shouldUseVisualShards
+        ? buildVisualShards(existing.fileSize, payload.fileProgress)
+        : payload.shards;
+
       return {
         activeTasks: {
           ...state.activeTasks,
           [payload.taskId]: {
             ...existing,
             fileProgress: payload.fileProgress,
-            shards: payload.shards,
+            shards,
             speed: payload.speed,
           },
         },
       };
     }),
 
-  setTaskError: (taskId) =>
+  setTaskError: (taskId, errorMessage) =>
     set((state) => {
       const existing = state.activeTasks[taskId];
       if (!existing) return state;
       return {
         activeTasks: {
           ...state.activeTasks,
-          [taskId]: { ...existing, status: 'error' },
+          [taskId]: { ...existing, status: 'error', errorMessage },
         },
       };
     }),

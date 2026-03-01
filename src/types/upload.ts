@@ -33,6 +33,7 @@ export interface UploadTaskProgress {
   shards: ShardProgress[];
   status: 'uploading' | 'completed' | 'error';
   downloadUrl?: string;
+  errorMessage?: string;
   speed?: number;
 }
 
@@ -68,5 +69,4 @@ export interface FileCompletePayload {
 }
 
 /** All files complete event payload from Rust upload:all-complete event */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface AllCompletePayload {}
+export type AllCompletePayload = Record<string, never>;

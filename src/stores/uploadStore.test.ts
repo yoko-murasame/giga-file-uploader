@@ -198,6 +198,39 @@ describe('uploadStore', () => {
       expect(useUploadStore.getState().activeTasks['task-1'].fileProgress).toBe(75);
       expect(useUploadStore.getState().activeTasks['task-2'].fileProgress).toBe(20);
     });
+
+    it('should build visual shards for files larger than 1 GiB when backend sends single shard', () => {
+      useUploadStore.setState({
+        activeTasks: {
+          'task-large': {
+            taskId: 'task-large',
+            fileName: 'big.bin',
+            fileSize: 2_684_354_560,
+            fileProgress: 0,
+            shards: [],
+            status: 'uploading',
+          },
+        },
+      });
+
+      const payload: ProgressPayload = {
+        taskId: 'task-large',
+        fileProgress: 50,
+        shards: [{ shardIndex: 0, progress: 50, status: 'uploading' }],
+        speed: 4096,
+      };
+
+      useUploadStore.getState().updateProgress(payload);
+
+      const task = useUploadStore.getState().activeTasks['task-large'];
+      expect(task.shards).toHaveLength(3);
+      expect(task.shards[0].progress).toBeCloseTo(100, 5);
+      expect(task.shards[0].status).toBe('completed');
+      expect(task.shards[1].progress).toBeCloseTo(25, 5);
+      expect(task.shards[1].status).toBe('uploading');
+      expect(task.shards[2].progress).toBe(0);
+      expect(task.shards[2].status).toBe('pending');
+    });
   });
 
   describe('setTaskError', () => {
