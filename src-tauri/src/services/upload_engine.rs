@@ -1,12 +1,12 @@
 //! Upload engine — orchestrates file uploads with first-chunk-serial protocol
-//! and concurrent chunk uploading with ordered completion.
+//! and strict ordered chunk uploading.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use tauri::Emitter;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 
 use serde::Serialize;
 
@@ -235,7 +235,7 @@ async fn upload_file(
 }
 
 /// Upload a single shard: first chunk serial (establishes Cookie session),
-/// then remaining chunks concurrently with ordered completion.
+/// then remaining chunks strictly in order.
 #[allow(clippy::too_many_arguments)]
 async fn upload_shard(
     shard: &mut Shard,
@@ -294,6 +294,14 @@ async fn upload_shard(
                         Some(d) => d,
                         None => read_chunk_data(&file_path, first_offset, first_size).await?,
                     };
+                    if data.len() as u64 != first_size {
+                        return Err(AppError::Io(format!(
+                            "Chunk read incomplete for '{}': index=0, expected={} bytes, got={} bytes",
+                            file_name,
+                            first_size,
+                            data.len()
+                        )));
+                    }
                     let api = GigafileApiV1::new()?;
                     let params = ChunkUploadParams {
                         data,
@@ -323,12 +331,10 @@ async fn upload_shard(
         return Ok(());
     }
 
-    // --- Remaining chunks: concurrent upload with ordered completion ---
-    let semaphore = Arc::new(Semaphore::new(DEFAULT_CONCURRENT_CHUNKS));
-    let completed_counter = Arc::new(AtomicU32::new(1)); // chunk 0 already done
-    let mut handles = Vec::new();
+    // --- Remaining chunks: strictly ordered upload ---
+    let mut last_url: Option<String> = None;
 
-    for chunk in &shard.chunks[1..] {
+    for chunk in &mut shard.chunks[1..] {
         if cancel_flag.load(Ordering::Relaxed) {
             shard.status = ShardStatus::Error;
             progress
@@ -337,110 +343,69 @@ async fn upload_shard(
             return Err(AppError::Internal("Upload cancelled by user".into()));
         }
 
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|e| AppError::Internal(format!("Semaphore error: {}", e)))?;
         let file_path = file_path.to_string();
         let file_name = file_name.to_string();
         let upload_id = shard.upload_id.clone();
         let server_url = server_url.to_string();
         let cookie_jar = cookie_jar.clone();
-        let completed_counter = completed_counter.clone();
         let chunk_index = chunk.chunk_index;
         let chunk_offset = chunk.offset;
         let chunk_size = chunk.size;
         let lifetime = config.lifetime;
-        let cancel_flag = cancel_flag.clone();
-        let app_clone = app.clone();
-        let task_id_owned = task_id.to_string();
         let retry_policy = retry_policy.clone();
         let progress_counter = counter.clone();
 
-        let handle = tokio::spawn(async move {
-            let resp = retry_upload_chunk(
-                &retry_policy,
-                &cancel_flag,
-                &app_clone,
-                &task_id_owned,
-                &file_name,
-                chunk_index,
-                || {
-                    let file_path = file_path.clone();
-                    let file_name = file_name.clone();
-                    let upload_id = upload_id.clone();
-                    let server_url = server_url.clone();
-                    let cookie_jar = cookie_jar.clone();
-                    let progress_counter = progress_counter.clone();
-                    async move {
-                        let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
-                        let api = GigafileApiV1::new()?;
-                        let params = ChunkUploadParams {
-                            data,
+        let resp = retry_upload_chunk(
+            &retry_policy,
+            cancel_flag,
+            app,
+            task_id,
+            &file_name,
+            chunk_index,
+            || {
+                let file_path = file_path.clone();
+                let file_name = file_name.clone();
+                let upload_id = upload_id.clone();
+                let server_url = server_url.clone();
+                let cookie_jar = cookie_jar.clone();
+                let progress_counter = progress_counter.clone();
+                async move {
+                    let data = read_chunk_data(&file_path, chunk_offset, chunk_size).await?;
+                    if data.len() as u64 != chunk_size {
+                        return Err(AppError::Io(format!(
+                            "Chunk read incomplete for '{}': index={}, expected={} bytes, got={} bytes",
                             file_name,
-                            upload_id,
                             chunk_index,
-                            total_chunks,
-                            lifetime,
-                            server_url,
-                            cookie_jar,
-                            progress_counter,
-                        };
-                        api.upload_chunk(params).await
+                            chunk_size,
+                            data.len()
+                        )));
                     }
-                },
-            )
-            .await?;
-
-            // Ordered completion: wait for our turn
-            loop {
-                if cancel_flag.load(Ordering::Relaxed) {
-                    return Err(AppError::Internal("Upload cancelled by user".into()));
+                    let api = GigafileApiV1::new()?;
+                    let params = ChunkUploadParams {
+                        data,
+                        file_name,
+                        upload_id,
+                        chunk_index,
+                        total_chunks,
+                        lifetime,
+                        server_url,
+                        cookie_jar,
+                        progress_counter,
+                    };
+                    api.upload_chunk(params).await
                 }
-                if completed_counter.load(Ordering::Acquire) == chunk_index {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-            completed_counter.store(chunk_index + 1, Ordering::Release);
+            },
+        )
+        .await?;
 
-            drop(permit);
-            Ok::<_, AppError>(resp)
-        });
+        chunk.status = ChunkStatus::Completed;
 
-        handles.push((chunk_index, handle));
-    }
-
-    // Collect results — on any failure, set cancel_flag so spin-waiting tasks exit
-    let mut last_url: Option<String> = None;
-    for (idx, handle) in handles {
-        let resp = match handle.await {
-            Ok(Ok(resp)) => resp,
-            Ok(Err(e)) => {
-                cancel_flag.store(true, Ordering::Relaxed);
-                progress
-                    .update_shard_status(task_id, shard.shard_index, ShardStatus::Error)
-                    .await;
-                return Err(e);
-            }
-            Err(e) => {
-                cancel_flag.store(true, Ordering::Relaxed);
-                progress
-                    .update_shard_status(task_id, shard.shard_index, ShardStatus::Error)
-                    .await;
-                return Err(AppError::Internal(format!("Task join error: {}", e)));
-            }
-        };
-        if idx == total_chunks - 1 {
+        if chunk_index == total_chunks - 1 {
             last_url = resp.download_url;
         }
     }
 
     // Update shard status
-    for chunk in &mut shard.chunks[1..] {
-        chunk.status = ChunkStatus::Completed;
-    }
     shard.download_url = last_url;
     shard.status = ShardStatus::Completed;
     progress
