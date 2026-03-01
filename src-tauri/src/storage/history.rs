@@ -14,9 +14,7 @@ pub fn add_record(app: &tauri::AppHandle, record: HistoryRecord) -> crate::error
     let mut records = load_records(&store);
     records.insert(0, record); // newest first
     store.set(RECORDS_KEY, serde_json::to_value(&records)?);
-    store
-        .save()
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
     Ok(())
 }
 
@@ -36,9 +34,7 @@ pub fn delete_record(app: &tauri::AppHandle, id: &str) -> crate::error::Result<(
     let mut records = load_records(&store);
     records.retain(|r| r.id != id);
     store.set(RECORDS_KEY, serde_json::to_value(&records)?);
-    store
-        .save()
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
     Ok(())
 }
 

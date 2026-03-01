@@ -1,13 +1,10 @@
 //! Chunk planning for file uploads.
 //!
-//! Splits files into logical shards (1 GiB each) and upload chunks (100 MiB each)
-//! according to the gigafile.nu two-level chunking protocol.
+//! Splits files into upload chunks (100 MiB each) under a single upload session.
 //! Pure computation — no file I/O is performed.
 
 use crate::models::upload::{Chunk, ChunkStatus, Shard, ShardStatus};
 
-/// Logical shard size: 1 GiB.
-pub const SHARD_SIZE: u64 = 1_073_741_824;
 /// Upload chunk size: 100 MiB.
 pub const CHUNK_SIZE: u64 = 104_857_600;
 
@@ -21,29 +18,16 @@ pub fn plan_chunks(file_size: u64) -> Vec<Shard> {
         return Vec::new();
     }
 
-    let mut shards = Vec::new();
-    let mut file_offset: u64 = 0;
-    let mut shard_index: u32 = 0;
-
-    while file_offset < file_size {
-        let shard_size = std::cmp::min(SHARD_SIZE, file_size - file_offset);
-        let chunks = plan_shard_chunks(file_offset, shard_size);
-
-        shards.push(Shard {
-            shard_index,
-            offset: file_offset,
-            size: shard_size,
-            chunks,
-            upload_id: String::new(),
-            status: ShardStatus::Pending,
-            download_url: None,
-        });
-
-        file_offset += shard_size;
-        shard_index += 1;
-    }
-
-    shards
+    let chunks = plan_shard_chunks(0, file_size);
+    vec![Shard {
+        shard_index: 0,
+        offset: 0,
+        size: file_size,
+        chunks,
+        upload_id: String::new(),
+        status: ShardStatus::Pending,
+        download_url: None,
+    }]
 }
 
 /// Plan chunk layout within a single shard.
@@ -110,31 +94,17 @@ mod tests {
         assert_eq!(total, file_size);
     }
 
-    // AC-5: 2.5 GiB — 3 shards
+    // AC-5: 2.5 GiB — 1 shard, 26 chunks
     #[test]
     fn test_large_file_2_5gib() {
         let file_size: u64 = 2_684_354_560;
         let shards = plan_chunks(file_size);
-        assert_eq!(shards.len(), 3);
+        assert_eq!(shards.len(), 1);
 
-        // Shard 0: 1 GiB = 11 chunks (10 x 100MiB + 1 x 25_165_824)
-        assert_eq!(shards[0].size, SHARD_SIZE);
-        assert_eq!(shards[0].chunks.len(), 11);
-        let shard0_total: u64 = shards[0].chunks.iter().map(|c| c.size).sum();
-        assert_eq!(shard0_total, SHARD_SIZE);
-
-        // Shard 1: 1 GiB = 11 chunks
-        assert_eq!(shards[1].size, SHARD_SIZE);
-        assert_eq!(shards[1].chunks.len(), 11);
-        let shard1_total: u64 = shards[1].chunks.iter().map(|c| c.size).sum();
-        assert_eq!(shard1_total, SHARD_SIZE);
-
-        // Shard 2: 0.5 GiB = 536_870_912 bytes = 6 chunks (5 x 100MiB + 1 tail)
-        let last_shard_size = file_size - 2 * SHARD_SIZE;
-        assert_eq!(shards[2].size, last_shard_size);
-        assert_eq!(shards[2].chunks.len(), 6);
-        let shard2_total: u64 = shards[2].chunks.iter().map(|c| c.size).sum();
-        assert_eq!(shard2_total, last_shard_size);
+        assert_eq!(shards[0].size, file_size);
+        assert_eq!(shards[0].chunks.len(), 26);
+        let last_chunk = shards[0].chunks.last().unwrap();
+        assert_eq!(last_chunk.size, 62_914_560);
 
         // Total of all shards equals file size
         let total: u64 = shards.iter().map(|s| s.size).sum();
@@ -170,21 +140,16 @@ mod tests {
         assert_eq!(total, file_size);
     }
 
-    // AC-5: 1 GiB + 1 byte — 2 shards
+    // AC-5: 1 GiB + 1 byte — 1 shard, 11 chunks
     #[test]
     fn test_1gib_plus_1_byte() {
         let file_size: u64 = 1_073_741_825;
         let shards = plan_chunks(file_size);
-        assert_eq!(shards.len(), 2);
-
+        assert_eq!(shards.len(), 1);
         assert_eq!(shards[0].shard_index, 0);
-        assert_eq!(shards[0].size, SHARD_SIZE);
-
-        assert_eq!(shards[1].shard_index, 1);
-        assert_eq!(shards[1].size, 1);
-        assert_eq!(shards[1].chunks.len(), 1);
-        assert_eq!(shards[1].chunks[0].size, 1);
-        assert_eq!(shards[1].chunks[0].offset, SHARD_SIZE);
+        assert_eq!(shards[0].size, file_size);
+        assert_eq!(shards[0].chunks.len(), 11);
+        assert_eq!(shards[0].chunks[10].size, 25_165_825);
     }
 
     // AC-5: 1 byte

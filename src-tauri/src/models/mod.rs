@@ -5,9 +5,9 @@
 
 pub mod file;
 
-pub mod upload;
 pub mod history;
 pub mod settings;
+pub mod upload;
 
 #[cfg(test)]
 mod tests {

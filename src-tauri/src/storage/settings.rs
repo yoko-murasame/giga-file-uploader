@@ -24,9 +24,7 @@ pub fn save_settings(app: &tauri::AppHandle, settings: AppSettings) -> crate::er
         .store(STORE_FILE)
         .map_err(|e| AppError::Storage(e.to_string()))?;
     store.set(SETTINGS_KEY, serde_json::to_value(&settings)?);
-    store
-        .save()
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    store.save().map_err(|e| AppError::Storage(e.to_string()))?;
     Ok(())
 }
 

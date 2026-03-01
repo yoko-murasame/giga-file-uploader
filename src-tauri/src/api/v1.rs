@@ -21,23 +21,79 @@ const USER_AGENT: &str = "GigaFileUploader/0.1.0";
 /// 128KB progress reporting granularity (NFR2).
 const PROGRESS_CHUNK_SIZE: usize = 128 * 1024;
 
+fn build_download_file_url(download_page_url: &str) -> crate::error::Result<String> {
+    let page_re = Regex::new(r"^https?://[^/]+/([a-z0-9-]+)$")
+        .map_err(|e| AppError::Internal(format!("Regex compile error: {}", e)))?;
+    let file_id = page_re
+        .captures(download_page_url)
+        .and_then(|caps| caps.get(1))
+        .map(|m| m.as_str().to_string())
+        .ok_or_else(|| {
+            AppError::Api(format!("Invalid download page URL: {}", download_page_url))
+        })?;
+
+    let base = download_page_url
+        .rsplit_once('/')
+        .map(|(left, _)| left)
+        .ok_or_else(|| {
+            AppError::Api(format!("Invalid download page URL: {}", download_page_url))
+        })?;
+
+    Ok(format!("{}/download.php?file={}", base, file_id))
+}
+
+fn parse_content_range_total_size(content_range: &str) -> Option<u64> {
+    let re = Regex::new(r"^bytes\s+\d+-\d+/(\d+)$").ok()?;
+    re.captures(content_range)
+        .and_then(|caps| caps.get(1))
+        .and_then(|m| m.as_str().parse::<u64>().ok())
+}
+
+fn parse_remote_size_from_headers(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    if let Some(value) = headers.get(reqwest::header::CONTENT_LENGTH) {
+        if let Ok(raw) = value.to_str() {
+            if let Ok(size) = raw.parse::<u64>() {
+                if size > 0 {
+                    return Some(size);
+                }
+            }
+        }
+    }
+
+    headers
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_content_range_total_size)
+}
+
 /// Convert a `Vec<u8>` into a `Stream` that yields 128KB chunks and updates
 /// an optional `AtomicU64` progress counter after each chunk is yielded.
 fn progress_stream(
     data: Vec<u8>,
     counter: Option<Arc<AtomicU64>>,
+    chunk_index: u32,
+    ordered_completion_gate: Option<super::UploadOrderGate>,
 ) -> impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> {
-    let chunks: Vec<Bytes> = data
-        .chunks(PROGRESS_CHUNK_SIZE)
-        .map(Bytes::copy_from_slice)
-        .collect();
+    stream::unfold(
+        (data, 0usize, counter, ordered_completion_gate),
+        move |(data, offset, counter, ordered_completion_gate)| async move {
+            if offset < data.len() {
+                let end = (offset + PROGRESS_CHUNK_SIZE).min(data.len());
+                let chunk = Bytes::copy_from_slice(&data[offset..end]);
+                if let Some(ref c) = counter {
+                    c.fetch_add((end - offset) as u64, Ordering::Relaxed);
+                }
+                return Some((Ok(chunk), (data, end, counter, ordered_completion_gate)));
+            }
 
-    stream::iter(chunks.into_iter().map(move |chunk| {
-        if let Some(ref c) = counter {
-            c.fetch_add(chunk.len() as u64, Ordering::Relaxed);
-        }
-        Ok(chunk)
-    }))
+            if let Some(ref gate) = ordered_completion_gate {
+                gate.wait_turn(chunk_index).await;
+                gate.complete_turn(chunk_index);
+            }
+
+            None
+        },
+    )
 }
 
 pub struct GigafileApiV1 {
@@ -93,7 +149,12 @@ impl GigafileApi for GigafileApiV1 {
 
         // Build multipart form with streaming body for 128KB progress granularity
         let data_len = params.data.len() as u64;
-        let body = reqwest::Body::wrap_stream(progress_stream(params.data, params.progress_counter));
+        let body = reqwest::Body::wrap_stream(progress_stream(
+            params.data,
+            params.progress_counter,
+            params.chunk_index,
+            params.ordered_completion_gate,
+        ));
         let form = reqwest::multipart::Form::new()
             .text("id", params.upload_id)
             .text("name", params.file_name)
@@ -137,11 +198,56 @@ impl GigafileApi for GigafileApiV1 {
 
     async fn verify_upload(
         &self,
-        _params: VerifyUploadParams,
+        params: VerifyUploadParams,
     ) -> crate::error::Result<VerifyResult> {
-        Err(AppError::Internal(
-            "verify_upload not yet implemented -- see Story 3.3".into(),
-        ))
+        if params.expected_size == 0 {
+            return Err(AppError::Api(
+                "Zero-byte file is not supported by gigafile upload API".into(),
+            ));
+        }
+
+        let direct_download_url = build_download_file_url(&params.download_url)?;
+
+        self.client
+            .get(&params.download_url)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let mut remote_size = match self.client.head(&direct_download_url).send().await {
+            Ok(resp) => {
+                let status = resp.status();
+                if status.is_success() {
+                    parse_remote_size_from_headers(resp.headers())
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+
+        if remote_size.is_none() {
+            let range_resp = self
+                .client
+                .get(&direct_download_url)
+                .header(reqwest::header::RANGE, "bytes=0-0")
+                .send()
+                .await?
+                .error_for_status()?;
+            remote_size = parse_remote_size_from_headers(range_resp.headers());
+        }
+
+        let remote_size = remote_size.ok_or_else(|| {
+            AppError::Api(format!(
+                "Failed to verify remote file size from response headers for URL: {}",
+                direct_download_url
+            ))
+        })?;
+
+        Ok(VerifyResult {
+            is_valid: remote_size == params.expected_size,
+            remote_size,
+        })
     }
 }
 
@@ -236,6 +342,7 @@ mod tests {
             server_url: "https://46.gigafile.nu".into(),
             cookie_jar: jar,
             progress_counter: None,
+            ordered_completion_gate: None,
         };
         assert_eq!(params.file_name, "test.zip");
         assert_eq!(params.chunk_index, 0);
@@ -252,6 +359,30 @@ mod tests {
         };
         assert_eq!(params.download_url, "https://gigafile.nu/abc123");
         assert_eq!(params.expected_size, 1024 * 1024);
+    }
+
+    #[test]
+    fn test_build_download_file_url_success() {
+        let url = build_download_file_url("https://46.gigafile.nu/0320-abc123").unwrap();
+        assert_eq!(url, "https://46.gigafile.nu/download.php?file=0320-abc123");
+    }
+
+    #[test]
+    fn test_build_download_file_url_invalid() {
+        let result = build_download_file_url("https://46.gigafile.nu/download.php?file=abc123");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_content_range_total_size_success() {
+        let size = parse_content_range_total_size("bytes 0-0/536870912");
+        assert_eq!(size, Some(536_870_912));
+    }
+
+    #[test]
+    fn test_parse_content_range_total_size_invalid() {
+        let size = parse_content_range_total_size("bytes */536870912");
+        assert_eq!(size, None);
     }
 
     #[test]
@@ -321,10 +452,14 @@ mod tests {
         // 300KB data = 128KB + 128KB + 44KB = 3 chunks
         let data = vec![0xABu8; 300 * 1024];
         let counter = Arc::new(AtomicU64::new(0));
-        let stream = progress_stream(data, Some(counter.clone()));
+        let stream = progress_stream(data, Some(counter.clone()), 0, None);
 
         let items: Vec<_> = stream.collect().await;
-        assert_eq!(items.len(), 3, "300KB should produce 3 stream items (128KB + 128KB + 44KB)");
+        assert_eq!(
+            items.len(),
+            3,
+            "300KB should produce 3 stream items (128KB + 128KB + 44KB)"
+        );
         assert!(items.iter().all(|r| r.is_ok()), "All items should be Ok");
         assert_eq!(
             counter.load(Ordering::Relaxed),
@@ -344,7 +479,7 @@ mod tests {
 
         // Passing None as counter should not panic
         let data = vec![0xCDu8; 256 * 1024]; // 256KB = 2 chunks
-        let stream = progress_stream(data, None);
+        let stream = progress_stream(data, None, 0, None);
 
         let items: Vec<_> = stream.collect().await;
         assert_eq!(items.len(), 2, "256KB should produce 2 stream items");

@@ -8,8 +8,10 @@
 //! This design satisfies NFR6 (API replaceability): when the gigafile.nu API changes,
 //! only the implementation within this module needs to be updated.
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+
+use tokio::sync::Notify;
 
 use crate::error::AppError;
 
@@ -24,6 +26,37 @@ pub struct ChunkUploadParams {
     pub server_url: String,
     pub cookie_jar: Arc<reqwest::cookie::Jar>,
     pub progress_counter: Option<Arc<AtomicU64>>,
+    pub ordered_completion_gate: Option<UploadOrderGate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UploadOrderGate {
+    next_chunk_to_complete: Arc<AtomicU32>,
+    notify: Arc<Notify>,
+}
+
+impl UploadOrderGate {
+    pub fn new(start_chunk_index: u32) -> Self {
+        Self {
+            next_chunk_to_complete: Arc::new(AtomicU32::new(start_chunk_index)),
+            notify: Arc::new(Notify::new()),
+        }
+    }
+
+    pub async fn wait_turn(&self, chunk_index: u32) {
+        loop {
+            if self.next_chunk_to_complete.load(Ordering::Acquire) == chunk_index {
+                return;
+            }
+            self.notify.notified().await;
+        }
+    }
+
+    pub fn complete_turn(&self, chunk_index: u32) {
+        self.next_chunk_to_complete
+            .store(chunk_index + 1, Ordering::Release);
+        self.notify.notify_waiters();
+    }
 }
 
 #[derive(Debug)]
@@ -81,11 +114,41 @@ pub mod v1;
 
 #[cfg(test)]
 mod tests {
+    use super::UploadOrderGate;
+
     #[test]
     fn module_loads() {
         // Verify the api module can be loaded successfully.
         // Note: GigafileApi trait uses RPITIT (return-position impl Trait in traits),
         // which is not object-safe. A module_loads test is used instead of
         // trait_is_object_safe.
+    }
+
+    #[tokio::test]
+    async fn test_upload_order_gate_blocks_until_turn() {
+        let gate = UploadOrderGate::new(1);
+        let waiter_gate = gate.clone();
+
+        let waiter = tokio::spawn(async move {
+            waiter_gate.wait_turn(2).await;
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        assert!(!waiter.is_finished());
+
+        gate.complete_turn(1);
+
+        tokio::time::timeout(std::time::Duration::from_millis(200), waiter)
+            .await
+            .expect("waiter should complete after previous turn is released")
+            .expect("waiter task should not panic");
+    }
+
+    #[tokio::test]
+    async fn test_upload_order_gate_immediate_when_turn_matches() {
+        let gate = UploadOrderGate::new(3);
+        tokio::time::timeout(std::time::Duration::from_millis(100), gate.wait_turn(3))
+            .await
+            .expect("wait_turn should return immediately for current turn");
     }
 }

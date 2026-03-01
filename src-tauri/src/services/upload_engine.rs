@@ -1,5 +1,5 @@
 //! Upload engine — orchestrates file uploads with first-chunk-serial protocol
-//! and strict ordered chunk uploading.
+//! and sequential chunk uploading.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use serde::Serialize;
 
 use crate::api::v1::GigafileApiV1;
-use crate::api::{ChunkUploadParams, GigafileApi};
+use crate::api::{ChunkUploadParams, GigafileApi, VerifyUploadParams};
 use crate::error::AppError;
 use crate::models::file::FileEntry;
 use crate::models::upload::*;
@@ -33,6 +33,22 @@ pub struct FileCompletePayload {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AllCompletePayload {}
+
+fn emit_upload_error(
+    app: &tauri::AppHandle,
+    task_id: &str,
+    file_name: &str,
+    error_message: String,
+) {
+    let _ = app.emit(
+        "upload:error",
+        UploadErrorPayload {
+            task_id: task_id.to_string(),
+            file_name: file_name.to_string(),
+            error_message,
+        },
+    );
+}
 
 /// Default concurrent chunk uploads per shard.
 pub const DEFAULT_CONCURRENT_CHUNKS: usize = 8;
@@ -152,18 +168,28 @@ async fn upload_file(
     task_id: String,
     progress: Arc<ProgressAggregator>,
 ) -> crate::error::Result<()> {
+    if task.shards.is_empty() {
+        let msg = "Zero-byte file is not supported by gigafile upload API";
+        emit_upload_error(&app, &task_id, &task.file_name, msg.into());
+        return Err(AppError::Api(msg.into()));
+    }
+    if task.shards.len() > 1 {
+        let msg =
+            "Chunk planner produced multiple shards for one file; upload requires a single upload session";
+        emit_upload_error(&app, &task_id, &task.file_name, msg.into());
+        return Err(AppError::Internal(msg.into()));
+    }
+
     task.status = UploadStatus::Uploading;
 
     for shard in &mut task.shards {
         if cancel_flag.load(Ordering::Relaxed) {
             task.status = UploadStatus::Error;
-            let _ = app.emit(
-                "upload:error",
-                UploadErrorPayload {
-                    task_id: task_id.clone(),
-                    file_name: task.file_name.clone(),
-                    error_message: "Upload cancelled by user".into(),
-                },
+            emit_upload_error(
+                &app,
+                &task_id,
+                &task.file_name,
+                "Upload cancelled by user".into(),
             );
             return Err(AppError::Internal("Upload cancelled by user".into()));
         }
@@ -185,14 +211,7 @@ async fn upload_file(
             progress
                 .update_shard_status(&task_id, shard.shard_index, ShardStatus::Error)
                 .await;
-            let _ = app.emit(
-                "upload:error",
-                UploadErrorPayload {
-                    task_id: task_id.clone(),
-                    file_name: task.file_name.clone(),
-                    error_message: e.to_string(),
-                },
-            );
+            emit_upload_error(&app, &task_id, &task.file_name, e.to_string());
             return Err(e);
         }
     }
@@ -203,8 +222,68 @@ async fn upload_file(
     }
     task.status = UploadStatus::Completed;
 
-    // Extract download URL (first shard URL as representative)
-    let download_url = task.shards[0].download_url.clone().unwrap_or_default();
+    let download_url = match task.shards[0].download_url.clone() {
+        Some(url) => url,
+        None => {
+            let msg = "Missing download URL from upload response";
+            task.status = UploadStatus::Error;
+            emit_upload_error(&app, &task_id, &task.file_name, msg.into());
+            return Err(AppError::Api(msg.into()));
+        }
+    };
+
+    let mut verified = false;
+    if let Ok(api) = GigafileApiV1::new() {
+        for attempt in 0..5 {
+            match api
+                .verify_upload(VerifyUploadParams {
+                    download_url: download_url.clone(),
+                    expected_size: task.file_size,
+                })
+                .await
+            {
+                Ok(result) => {
+                    if result.is_valid {
+                        verified = true;
+                        break;
+                    }
+                    log::warn!(
+                        "Upload verify mismatch for '{}': expected={} got={} (attempt {}/{})",
+                        task.file_name,
+                        task.file_size,
+                        result.remote_size,
+                        attempt + 1,
+                        5
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Upload verify request failed for '{}': {} (attempt {}/{})",
+                        task.file_name,
+                        e,
+                        attempt + 1,
+                        5
+                    );
+                }
+            }
+            if attempt < 4 {
+                tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            }
+        }
+    } else {
+        log::warn!(
+            "Upload verify client init failed for '{}', skip verification",
+            task.file_name
+        );
+    }
+    if !verified {
+        log::warn!(
+            "Upload verification not confirmed for '{}', continue returning download URL",
+            task.file_name
+        );
+    }
+
+    task.status = UploadStatus::Completed;
 
     // Save history record BEFORE emit (NFR11 crash-safe, RC-3 ownership-safe)
     let now = chrono::Utc::now();
@@ -217,7 +296,11 @@ async fn upload_file(
         expires_at: (now + chrono::TimeDelta::days(config.lifetime as i64)).to_rfc3339(),
     };
     if let Err(e) = crate::storage::history::add_record(&app, history_record) {
-        log::error!("Failed to save history record for '{}': {}", task.file_name, e);
+        log::error!(
+            "Failed to save history record for '{}': {}",
+            task.file_name,
+            e
+        );
     }
 
     // Emit upload:file-complete event (download_url moves here)
@@ -235,7 +318,7 @@ async fn upload_file(
 }
 
 /// Upload a single shard: first chunk serial (establishes Cookie session),
-/// then remaining chunks strictly in order.
+/// then remaining chunks sequentially.
 #[allow(clippy::too_many_arguments)]
 async fn upload_shard(
     shard: &mut Shard,
@@ -313,6 +396,7 @@ async fn upload_shard(
                         server_url,
                         cookie_jar,
                         progress_counter,
+                        ordered_completion_gate: None,
                     };
                     api.upload_chunk(params).await
                 }
@@ -331,7 +415,7 @@ async fn upload_shard(
         return Ok(());
     }
 
-    // --- Remaining chunks: strictly ordered upload ---
+    // --- Remaining chunks: sequential upload ---
     let mut last_url: Option<String> = None;
 
     for chunk in &mut shard.chunks[1..] {
@@ -391,6 +475,7 @@ async fn upload_shard(
                         server_url,
                         cookie_jar,
                         progress_counter,
+                        ordered_completion_gate: None,
                     };
                     api.upload_chunk(params).await
                 }

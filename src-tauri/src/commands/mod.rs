@@ -6,10 +6,10 @@
 
 pub mod files;
 
-pub mod upload;
 pub mod history;
 pub mod network;
 pub mod settings;
+pub mod upload;
 
 #[cfg(test)]
 mod tests {
