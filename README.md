@@ -21,6 +21,17 @@ A cross-platform desktop client for uploading files to [gigafile.nu](https://gig
 
 Download the `.dmg` file from [Releases](../../releases), or use the portable `.app` bundle.
 
+> **⚠️ "Giga File Uploader" is damaged and can't be opened**
+>
+> This is a known macOS Gatekeeper issue with unsigned apps. Since the app is not Apple-signed/notarized, macOS will block it with a quarantine attribute. To fix this, run the following command in Terminal:
+>
+> ```bash
+> # Remove quarantine attribute (adjust path if needed)
+> find /Applications/Giga\ File\ Uploader.app -exec xattr -d com.apple.quarantine {} \; 2>/dev/null
+> ```
+>
+> Alternatively, go to **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
+
 ### Windows
 
 Two options available:
